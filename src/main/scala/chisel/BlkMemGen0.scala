@@ -1,6 +1,6 @@
 /**
  * blk_mem_gen_0 的 Chisel 外层封装。
- * fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.gen/sources_1/ip/blk_mem_gen_0/blk_mem_gen_0.veo
+ * fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.gen/sources_1/ip/blk_mem_gen_0/blk_mem_gen_0.veo
  */
 package chisel
 

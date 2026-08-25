@@ -4,7 +4,7 @@
     "xci_name": "blk_mem_gen_0",
     "component_reference": "xilinx.com:ip:blk_mem_gen:8.4",
     "ip_revision": "7",
-    "gen_directory": "../../../../CPUSTCPUSoc.gen/sources_1/ip/blk_mem_gen_0",
+    "gen_directory": "../../../../CPUSTC-SoC.gen/sources_1/ip/blk_mem_gen_0",
     "parameters": {
       "component_parameters": {
         "Component_Name": [ { "value": "blk_mem_gen_0", "resolve_type": "user", "usage": "all" } ],
@@ -174,7 +174,7 @@
         "IPCONTEXT": [ { "value": "IP_Flow" } ],
         "IPREVISION": [ { "value": "7" } ],
         "MANAGED": [ { "value": "TRUE" } ],
-        "OUTPUTDIR": [ { "value": "../../../../CPUSTCPUSoc.gen/sources_1/ip/blk_mem_gen_0" } ],
+        "OUTPUTDIR": [ { "value": "../../../../CPUSTC-SoC.gen/sources_1/ip/blk_mem_gen_0" } ],
         "SELECTEDSIMMODEL": [ { "value": "" } ],
         "SHAREDDIR": [ { "value": "." } ],
         "SWVERSION": [ { "value": "2023.2" } ],

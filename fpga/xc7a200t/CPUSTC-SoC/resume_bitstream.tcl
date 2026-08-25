@@ -1,5 +1,5 @@
 set script_dir [file normalize [file dirname [info script]]]
-set run_dir [file join $script_dir CPUSTCPUSoc.runs impl_1]
+set run_dir [file join $script_dir CPUSTC-SoC.runs impl_1]
 set checkpoint [file join $run_dir soc_top_routed.dcp]
 set bitstream [file join $run_dir soc_top.bit]
 set report_dir [file join $script_dir reports]

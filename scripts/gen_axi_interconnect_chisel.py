@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 DEFAULT_INPUT = (
-    "fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.gen/sources_1/bd/"
+    "fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.gen/sources_1/bd/"
     "axi_interconnect_0/hdl/axi_interconnect_0_wrapper.v"
 )
 DEFAULT_OUTPUT = "src/main/scala/chisel/AxiInterconnect0.scala"

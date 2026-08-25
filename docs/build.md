@@ -84,7 +84,7 @@ IP/LiteSDCard/scripts/generate_litesdcard_axi.sh --check
 
 ### 4.1 同步可跟踪配置
 
-Vivado GUI 产生的本地 IP/Block Design 位于被 Git 忽略的 `CPUSTCPUSoc.srcs/`。修改完成后，从仓库根目录执行：
+Vivado GUI 产生的本地 IP/Block Design 位于被 Git 忽略的 `CPUSTC-SoC.srcs/`。修改完成后，从仓库根目录执行：
 
 ```bash
 ./scripts/sync_vivado_sources.sh --stage
@@ -98,7 +98,7 @@ Vivado GUI 产生的本地 IP/Block Design 位于被 Git 忽略的 `CPUSTCPUSoc.
 确认三个 SpinalHDL 输出和根 Chisel 输出都存在后打开工程：
 
 ```bash
-vivado fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr
+vivado fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr
 ```
 
 Vivado top module 为 `soc_top`，目标器件为 `xc7a200tfbg676-2`。在 Vivado 中依次检查 IP status、synthesis、implementation、timing summary 和 bitstream。

@@ -4,7 +4,7 @@
 <!-- Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.                   -->
 <!-- Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.   -->
 
-<Project Product="Vivado" Version="7" Minor="65" Path="$PPRDIR/CPUSTCPUSoc.xpr">
+<Project Product="Vivado" Version="7" Minor="65" Path="$PPRDIR/CPUSTC-SoC.xpr">
   <DefaultLaunch Dir="$PRUNDIR"/>
   <Configuration>
     <Option Name="Id" Val="a764676ff4bf42319120849eee19e5e7"/>

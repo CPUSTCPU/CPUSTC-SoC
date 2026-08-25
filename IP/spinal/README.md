@@ -16,4 +16,4 @@
 
 单独编译或测试时进入对应工程目录运行 `sbt compile` 或 `sbt test`。
 
-接口、寄存器和仿真说明见各子目录的 `README.md`。生成 RTL 默认不提交，打开 `../../fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr` 前应确认上述三个文件均存在。根工程的 `SocFeatureConfig` 只控制 Chisel SoC 是否例化 LCD DMA 和 USB wrapper；Vivado file set 保持固定，因此任何 profile 都继续准备全部 SpinalHDL 生成文件。
+接口、寄存器和仿真说明见各子目录的 `README.md`。生成 RTL 默认不提交，打开 `../../fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr` 前应确认上述三个文件均存在。根工程的 `SocFeatureConfig` 只控制 Chisel SoC 是否例化 LCD DMA 和 USB wrapper；Vivado file set 保持固定，因此任何 profile 都继续准备全部 SpinalHDL 生成文件。

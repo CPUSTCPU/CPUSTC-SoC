@@ -5,7 +5,7 @@
 CPUSTC-Soc is a Chisel/Verilog/Vivado SoC for the `xc7a200t` FPGA board. It integrates CPUSTCore, DDR3, AXI/APB buses, storage, networking, display, USB, camera capture, and optional accelerators. The active Vivado project is:
 
 ```text
-fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr
+fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr
 ```
 
 ## Overview

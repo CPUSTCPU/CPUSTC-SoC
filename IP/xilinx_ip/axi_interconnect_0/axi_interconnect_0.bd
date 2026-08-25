@@ -3,7 +3,7 @@
     "design_info": {
       "boundary_crc": "0xAE44F4A626F25229",
       "device": "xc7a200tfbg676-2",
-      "gen_directory": "../../../../CPUSTCPUSoc.gen/sources_1/bd/axi_interconnect_0",
+      "gen_directory": "../../../../CPUSTC-SoC.gen/sources_1/bd/axi_interconnect_0",
       "name": "axi_interconnect_0",
       "rev_ctrl_bd_flag": "RevCtrlBdOff",
       "synth_flow_mode": "Hierarchical",

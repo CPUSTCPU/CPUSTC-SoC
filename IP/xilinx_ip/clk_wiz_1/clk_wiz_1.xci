@@ -4,7 +4,7 @@
     "xci_name": "clk_wiz_1",
     "component_reference": "xilinx.com:ip:clk_wiz:6.0",
     "ip_revision": "13",
-    "gen_directory": "../../../../CPUSTCPUSoc.gen/sources_1/ip/clk_wiz_1",
+    "gen_directory": "../../../../CPUSTC-SoC.gen/sources_1/ip/clk_wiz_1",
     "parameters": {
       "component_parameters": {
         "Component_Name": [ { "value": "clk_wiz_1", "resolve_type": "user", "usage": "all" } ],
@@ -599,7 +599,7 @@
         "IPCONTEXT": [ { "value": "IP_Flow" } ],
         "IPREVISION": [ { "value": "13" } ],
         "MANAGED": [ { "value": "TRUE" } ],
-        "OUTPUTDIR": [ { "value": "../../../../CPUSTCPUSoc.gen/sources_1/ip/clk_wiz_1" } ],
+        "OUTPUTDIR": [ { "value": "../../../../CPUSTC-SoC.gen/sources_1/ip/clk_wiz_1" } ],
         "SELECTEDSIMMODEL": [ { "value": "" } ],
         "SHAREDDIR": [ { "value": "." } ],
         "SWVERSION": [ { "value": "2023.2" } ],

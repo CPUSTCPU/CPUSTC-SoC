@@ -5,7 +5,7 @@
 CPUSTC-Soc 是面向 `xc7a200t` FPGA 板卡的 Chisel/Verilog/Vivado SoC 工程，集成 CPUSTCore、DDR3、AXI/APB 总线、存储、网络、显示、USB、摄像头和可选加速器。当前 Vivado 工程入口为：
 
 ```text
-fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr
+fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr
 ```
 
 ## 项目概览

@@ -3,15 +3,15 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
-project_rel="fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr"
+project_rel="fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr"
 project="$repo_root/$project_rel"
 tcl_script="$script_dir/sync_vivado_sources.tcl"
 vivado_bin="${VIVADO:-vivado}"
 
 sources=(
-  "fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.srcs/sources_1/ip/blk_mem_gen_0_1/blk_mem_gen_0.xci"
-  "fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.srcs/sources_1/bd/axi_interconnect_0/axi_interconnect_0.bd"
-  "fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.srcs/sources_1/ip/clk_wiz_1/clk_wiz_1.xci"
+  "fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs/sources_1/ip/blk_mem_gen_0_1/blk_mem_gen_0.xci"
+  "fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs/sources_1/bd/axi_interconnect_0/axi_interconnect_0.bd"
+  "fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs/sources_1/ip/clk_wiz_1/clk_wiz_1.xci"
 )
 
 destinations=(

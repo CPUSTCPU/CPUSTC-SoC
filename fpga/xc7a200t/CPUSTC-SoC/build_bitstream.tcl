@@ -1,5 +1,5 @@
 set script_dir [file normalize [file dirname [info script]]]
-set project_name "CPUSTCPUSoc"
+set project_name "CPUSTC-SoC"
 set project_xpr [file join $script_dir "${project_name}.xpr"]
 set report_dir [file join $script_dir reports]
 
@@ -28,7 +28,7 @@ proc add_missing_files {paths} {
 
 open_project $project_xpr
 add_missing_files [glob -nocomplain [file join $script_dir .. .. .. IP myCPU *.sv]]
-set axi_bd_dir [file join $script_dir CPUSTCPUSoc.gen sources_1 bd axi_interconnect_0]
+set axi_bd_dir [file join $script_dir CPUSTC-SoC.gen sources_1 bd axi_interconnect_0]
 add_missing_files [glob -nocomplain [file join $axi_bd_dir hdl axi_interconnect_0_wrapper.v]]
 report_ip_status -file [file join $report_dir ip_status.rpt]
 
