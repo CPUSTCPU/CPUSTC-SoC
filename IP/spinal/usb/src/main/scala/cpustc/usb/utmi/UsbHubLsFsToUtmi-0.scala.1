@@ -1,0 +1,674 @@
+// 【详注】本文件是 UsbHubLsFsToUtmi.scala 的阅读副本，只增加中文解释，不参与 sbt 的 Scala 源码编译。
+// 【详注】所有新增说明均使用“【详注】”标记；删除这些标记行后，应当逐行还原创建副本时的原文件。
+// 【详注】阅读顺序建议：接口与时序参数 -> TX 双 bank -> 物理 EOP 状态机 -> RX -> 端口主状态机。
+package cpustc.usb.utmi
+
+// 【详注】spinal.core 提供 Bundle、Bits、Bool、UInt、Reg、SpinalEnum、Component 等硬件描述基础类型。
+import spinal.core._
+// 【详注】spinal.lib 提供 Stream、Flow、Fragment、StreamFifo、CounterFreeRun 和 IMasterSlave 等库组件。
+import spinal.lib._
+// 【详注】UsbHubLsFs.Ctrl 是 OHCI 内核和 LS/FS PHY 之间的内部控制接口，本模块把它转换成 USB3500 UTMI+。
+import spinal.lib.com.usb.phy.UsbHubLsFs
+// 【详注】允许使用 SpinalHDL 常见的“8 bits”等后缀写法。
+import scala.language.postfixOps
+
+/** USB3500 的 8-bit UTMI+ Link 侧接口。
+  *
+  * DATA 总线在模块边界拆成输入、输出和输出使能，物理 IOBUF 留给板级顶层处理。
+  */
+// 【详注】该 Bundle 只描述 FPGA Link 侧能看到的 USB3500 信号；USB3500 的 D+/D- 模拟收发器位于芯片内部。
+case class Usb3500UtmiIo() extends Bundle with IMasterSlave {
+  // 【详注】dataI 是 PHY 返回给 Link 的接收字节；有效性由 rxActive/rxValid/rxError 描述。
+  val dataI: Bits = Bits(8 bits)
+  // 【详注】dataO 是 Link 发给 PHY 的发送字节。
+  val dataO: Bits = Bits(8 bits)
+  // 【详注】dataOe 控制板级双向 DATA[7:0] IOBUF 的输出使能；当前实现通常让它跟随 txValid。
+  val dataOe: Bool = Bool()
+
+  // 【详注】txValid 表示 dataO 当前包含待发送数据。正常包期间必须连续保持，避免 USB3500提前产生 EOP。
+  val txValid: Bool = Bool()
+  // 【详注】txReady 是 USB3500 对当前发送字节的接收确认；txValid && txReady 构成一次 UTMI 字节握手。
+  val txReady: Bool = Bool()
+  // 【详注】rxValid 表示 dataI 当前是一个有效接收字节。
+  val rxValid: Bool = Bool()
+  // 【详注】rxActive 覆盖一个完整物理接收区间，通常从检测到 SOP 持续到 EOP。
+  val rxActive: Bool = Bool()
+  // 【详注】rxError 报告当前接收过程中的物理错误；后文会把独立出现的错误补成 OHCI 可观察的 Flow beat。
+  val rxError: Bool = Bool()
+  // 【详注】lineState[0] 对应 DP、lineState[1] 对应 DM；00=SE0、01=DP 高、10=DM 高、11=SE1。
+  val lineState: Bits = Bits(2 bits)
+
+  // 【详注】xcvrSel 选择收发器速度：00=HS、01=FS、10=LS。此模块只把 00 用作产生 SE0，不进入 HS 事务。
+  val xcvrSel: Bits = Bits(2 bits)
+  // 【详注】termSel 选择端接模式；LS/FS 正常工作时为 1，和 xcvrSel=00 配合时可形成复位用 SE0。
+  val termSel: Bool = Bool()
+  // 【详注】opMode=00 为正常编码，10 为关闭 bit stuffing 和 NRZI，用于直接产生 Resume K 等原始线路状态。
+  val opMode: Bits = Bits(2 bits)
+  // 【详注】suspendN 是低有效 PHY 低功耗控制。当前设计固定为 1，以保持 USB3500 CLKOUT 连续运行。
+  val suspendN: Bool = Bool()
+  // 【详注】dpPd/dmPd 控制 Host 侧 D+/D- 下拉；固定 Host 模式通常保持两个下拉有效。
+  val dpPd: Bool = Bool()
+  val dmPd: Bool = Bool()
+
+  // 【详注】vbusValid 表示 PHY 检测到有效 VBUS。当前连接和断开逻辑会使用它。
+  val vbusValid: Bool = Bool()
+  // 【详注】hostDisconnect 主要用于高速 Host 断开检测；本模块只支持 LS/FS，因此当前代码没有消费该信号。
+  val hostDisconnect: Bool = Bool()
+
+  // 【详注】从本 Bundle 的 master 方向看：Link 驱动 out 列表，USB3500 驱动 in 列表。
+  override def asMaster(): Unit = {
+    out(dataO, dataOe, txValid, xcvrSel, termSel, opMode, suspendN, dpPd, dmPd)
+    in(dataI, txReady, rxValid, rxActive, rxError, lineState, vbusValid, hostDisconnect)
+  }
+}
+
+/** USB3500 UTMI 端口状态机使用的周期计数。
+  *
+  * 默认值对应 60 MHz UTMI 时钟；测试可缩短计数，板级生成保持默认值。
+  */
+// 【详注】所有时间都以 USB3500 提供的 60 MHz CLKOUT 周期表示；一个周期约为 16.667 ns。
+case class UsbHubLsFsToUtmiTiming(
+    // 【详注】连接检测消抖：500 us × 60 cycle/us = 30000 cycles。
+    attachDebounceCycles: Int = 500 * 60,
+    // 【详注】断开判定窗口：3 us × 60 cycle/us = 180 cycles。
+    disconnectCycles: Int = 3 * 60,
+    // 【详注】根端口复位 SE0：50 ms × 1000 us/ms × 60 cycle/us = 3000000 cycles。
+    resetCycles: Int = 50 * 1000 * 60,
+    // 【详注】Resume K 持续时间：20 ms，对应 1200000 cycles。
+    resumeCycles: Int = 20 * 1000 * 60,
+    // 【详注】正常包最后一个字节被 PHY 接收后，等待 LINESTATE 出现 SE0/J 的最大周期数。
+    txEopTimeoutCycles: Int = 4096,
+    // 【详注】正常全速包之间的最小发送间隔；10 个 60 MHz 周期约为两个 FS bit time。
+    fullSpeedInterPacketCycles: Int = 10,
+    // 【详注】正常低速包之间的最小发送间隔；80 个周期约为两个 LS bit time。
+    lowSpeedInterPacketCycles: Int = 80,
+    // 【详注】Resume 结束阶段的 SE0：80 cycles = 两个 LS bit time。
+    resumeEopSe0Cycles: Int = 80,
+    // 【详注】Resume 结束阶段的 J 窗口：40 cycles = 一个 LS bit time。
+    resumeEopJCycles: Int = 40
+) {
+  // 【详注】计数器实现都要比较“周期数 - 1”，这些约束排除零和单周期退化配置。
+  require(attachDebounceCycles > 1)
+  require(disconnectCycles > 1)
+  require(resetCycles > 1)
+  require(resumeCycles > 1)
+  require(txEopTimeoutCycles > 1)
+  require(fullSpeedInterPacketCycles > 1)
+  require(lowSpeedInterPacketCycles > 1)
+  require(resumeEopSe0Cycles > 1)
+  require(resumeEopJCycles > 1)
+}
+
+/** UTMI 发送完成状态机导出的原生 60 MHz 调试信号。 */
+// 【详注】这些信号直接用于仿真和 ILA，避免只看到 OHCI 侧事件而看不到 UTMI 物理完成过程。
+case class UsbHubLsFsToUtmiDebug(waitCounterWidth: Int, ipdCounterWidth: Int) extends Bundle {
+  // 【详注】正常 TX EOP 状态机的枚举编码。
+  val txEopState: Bits = Bits(3 bits)
+  // 【详注】某个 Sending bank 的 last 字节在本周期完成 txReady 握手。
+  val txLastAccepted: Bool = Bool()
+  // 【详注】送回 OHCI 的逻辑发送结束脉冲。
+  val ctrlTxEop: Bool = Bool()
+  // 【详注】发送端是否允许领取一个 Ready bank。
+  val txLaunchAllowed: Bool = Bool()
+  // 【详注】EOP 状态机是否进入粘滞 FaultLock。
+  val txFault: Bool = Bool()
+  // 【详注】区分等待 SE0 超时和等待 J 超时。
+  val txFaultReason: Bits = Bits(2 bits)
+  val txWaitCounter: Bits = Bits(waitCounterWidth bits)
+  val txIpdCounter: Bits = Bits(ipdCounterWidth bits)
+  // 【详注】当前端口锁存的设备速度，True 表示 Low Speed。
+  val portLowSpeed: Bool = Bool()
+  // 【详注】两个 TX bank 的 Free/Filling/Ready/Sending 状态编码。
+  val txBufferState0: Bits = Bits(2 bits)
+  val txBufferState1: Bits = Bits(2 bits)
+}
+
+/** 将 SpinalHDL OHCI 的内部低速/全速 Hub 接口适配为 USB3500 UTMI+接口。
+  *
+  * 该模块只支持单端口固定 Host 的 LS/FS 模式，不实现 EHCI/HS、OTG、VBUS 开关或过流检测。
+  * 输入时钟域必须是 USB3500 CLKOUT 提供的 60 MHz UTMI 时钟域。
+  */
+// 【详注】模块可以分成四部分：TX 包缓存、正常 TX EOP 跟踪、RX 转发、下行端口管理状态机。
+case class UsbHubLsFsToUtmi(
+    timing: UsbHubLsFsToUtmiTiming = UsbHubLsFsToUtmiTiming(),
+    // 【详注】单个 bank 至少能容纳一个 USB 最大包及控制器可能附带的字节，当前下限固定为 1026。
+    txBufferDepth: Int = 1026
+) extends Component {
+  require(txBufferDepth >= 1026)
+
+  // 【详注】log2Up(N) 生成能表示 0 到 N-1 所需的最小位宽，减少综合后的寄存器资源。
+  private val txWaitCounterWidth = log2Up(timing.txEopTimeoutCycles)
+  private val txIpdCounterWidth =
+    log2Up(timing.fullSpeedInterPacketCycles max timing.lowSpeedInterPacketCycles)
+  // 【详注】复位、Resume K、Resume EOP SE0/J 复用同一个 stateCounter，所以位宽取四者最大值。
+  private val stateCounterWidth = log2Up(
+    timing.resetCycles max
+      timing.resumeCycles max
+      timing.resumeEopSe0Cycles max
+      timing.resumeEopJCycles
+  )
+
+  val io = new Bundle {
+    // 【详注】slave 表示本模块接受 OHCI 发来的命令和 TX Stream，并返回 RX、事件及握手结果。
+    val ctrl: UsbHubLsFs.Ctrl = slave(UsbHubLsFs.Ctrl(1))
+    // 【详注】master 表示本模块主动驱动 USB3500 的 Link 侧控制和发送信号。
+    val utmi: Usb3500UtmiIo = master(Usb3500UtmiIo())
+    val debug: UsbHubLsFsToUtmiDebug =
+      out(UsbHubLsFsToUtmiDebug(txWaitCounterWidth, txIpdCounterWidth))
+  }
+
+  // 【详注】==================== 下行端口主状态机枚举 ====================
+  object PortState extends SpinalEnum {
+    // 【详注】PowerOff：逻辑端口无电；Disconnected：等待连接；Disabled：已连接、尚未复位启用。
+    // 【详注】Resetting：驱动复位 SE0；Enabled：允许正常收发；Suspended：选择性挂起。
+    // 【详注】Resuming：驱动 Resume K；最后两个状态分别计时 Resume EOP 的 SE0 和 J。
+    val PowerOff, Disconnected, Disabled, Resetting, Enabled, Suspended, Resuming,
+        ResumeEopSe0, ResumeEopJ = newElement()
+  }
+
+  // 【详注】==================== 单个 TX bank 的生命周期 ====================
+  object TxBufferState extends SpinalEnum {
+    // 【详注】Free -> Filling -> Ready -> Sending -> Free。
+    val Free, Filling, Ready, Sending = newElement()
+  }
+
+  // 【详注】==================== 正常数据包的物理 EOP 跟踪 ====================
+  object TxEopState extends SpinalEnum {
+    // 【详注】last 字节握手后先等 SE0，再等 J，再计最小包间隔；任何等待超时进入 FaultLock。
+    val Idle, WaitSe0, WaitJ, InterPacket, FaultLock = newElement()
+  }
+
+  object TxFaultReason extends SpinalEnum {
+    val NoFault, WaitSe0Timeout, WaitJTimeout = newElement()
+  }
+
+  // 【详注】主状态寄存器上电进入 PowerOff；后文的 usbReset 和 port.power 具有全局最高优先级。
+  val state = RegInit(PortState.PowerOff)
+  // 【详注】本模块固定单端口，所以直接选择 ports(0)。
+  val port = io.ctrl.ports(0)
+  // 【详注】连接确认时锁存速度；False=FS，True=LS。该值同时决定 XCVRSEL、J/K 解释和包间隔。
+  val portLowSpeed = RegInit(False)
+
+  // 【详注】==================== USB3500 LINESTATE 解码 ====================
+  val lineSe0 = io.utmi.lineState === B"00"
+  // 【详注】在 Host FS 模式中 01 是 J；在 Host LS 模式中 01 是 K。
+  val lineFsJ = io.utmi.lineState === B"01"
+  // 【详注】在 Host LS 模式中 10 是 J；在 Host FS 模式中 10 是 K。
+  val lineLsJ = io.utmi.lineState === B"10"
+  // 【详注】SpinalHDL 的 cond ? a | b 等价于硬件多路选择器。此处按锁存速度选择真正的 J。
+  val lineJ = portLowSpeed ? lineLsJ | lineFsJ
+  // 【详注】01 或 10 都说明至少一根数据线被设备上拉，可作为“有设备”候选状态。
+  val lineAttached = lineFsJ || lineLsJ
+  // 【详注】K 与 J 极性相反，因此 LS 选择 01，FS 选择 10。
+  val lineK = portLowSpeed ? lineFsJ | lineLsJ
+
+  // 【详注】OHCI 内部需要周期 tick；这里每 5 个 60 MHz 周期产生一个 willOverflow 脉冲。
+  val tickDivider = CounterFreeRun(5)
+  io.ctrl.tick := tickDivider.willOverflow
+  // 【详注】硬件没有接入过流检测，模块级总过流固定为 False。
+  io.ctrl.overcurrent := False
+
+  // 【详注】==================== UTMI 控制引脚默认值 ====================
+  // 【详注】固定 Host 模式下持续打开 DP/DM 下拉。
+  io.utmi.dpPd := True
+  io.utmi.dmPd := True
+  // 第一阶段保持 PHY 时钟运行，避免 SUSPENDN 拉低后 CLKOUT 停止而无法在本时钟域唤醒。
+  io.utmi.suspendN := True
+  // 【详注】正常默认速度随设备类型选择：LS=10，FS=01。
+  io.utmi.xcvrSel := portLowSpeed ? B"10" | B"01"
+  // 【详注】LS/FS 正常端接。
+  io.utmi.termSel := True
+  // 【详注】正常 NRZI 与 bit stuffing 模式。后面的状态分支会覆盖这些默认赋值。
+  io.utmi.opMode := B"00"
+
+  // 【详注】只有 Enabled 状态允许普通 OHCI 数据包真正进入 USB3500。
+  // 【详注】Resume K 和 Resume EOP 由主状态机直接覆盖 UTMI 控制，不经过普通 TX bank。
+  val txPhysicalEnabled = state === PortState.Enabled
+  // 两个 bank 各缓存一个完整包，允许当前包发送时并行接收下一包。
+  val txBuffer0 = StreamFifo(Fragment(Bits(8 bits)), txBufferDepth)
+  val txBuffer1 = StreamFifo(Fragment(Bits(8 bits)), txBufferDepth)
+  // 【详注】FIFO 自身保存字节；额外状态寄存器保存“当前 FIFO 中的数据属于哪一个完整包阶段”。
+  val txBufferState0 = Reg(TxBufferState()) init TxBufferState.Free
+  val txBufferState1 = Reg(TxBufferState()) init TxBufferState.Free
+  // 两个 bank 同时 Ready 时，记录先完成整包入队的 bank；False 对应 bank0，True 对应 bank1。
+  // 【详注】这个 1 bit 寄存器只在两个 bank 都 Ready 时参与选择，保证包按完成入队的先后顺序发送。
+  val txFirstReadyBank1 = RegInit(False)
+  val txEopState = Reg(TxEopState()) init TxEopState.Idle
+  val txFaultReason = Reg(TxFaultReason()) init TxFaultReason.NoFault
+  val txWaitCounter = Reg(UInt(txWaitCounterWidth bits)) init 0
+  val txIpdCounter = Reg(UInt(txIpdCounterWidth bits)) init 0
+  // 【详注】txEopPulse 是一个默认每周期清零、按条件置位的单周期寄存器脉冲。
+  val txEopPulse = RegInit(False)
+  // 【详注】按当前端口速度选择包间隔计数终值；计数从 0 开始，所以使用 cycles-1。
+  val txIpdLast = portLowSpeed ?
+    U(timing.lowSpeedInterPacketCycles - 1, txIpdCounterWidth bits) |
+    U(timing.fullSpeedInterPacketCycles - 1, txIpdCounterWidth bits)
+  // 【详注】只有持续观察到 J 且计数达到终值，当前包间隔才完成。
+  val txIpdComplete =
+    txEopState === TxEopState.InterPacket && lineJ && txIpdCounter === txIpdLast
+  // 【详注】Idle 可以立即启动；InterPacket 完成的同一周期也允许下一 Ready bank 被领取。
+  val txLaunchAllowed = txEopState === TxEopState.Idle || txIpdComplete
+  val txFault = txEopState === TxEopState.FaultLock
+
+  // 【详注】离开 Enabled 后清空两个 FIFO，避免旧包在复位、挂起或重新连接后继续发送。
+  txBuffer0.io.flush := !txPhysicalEnabled
+  txBuffer1.io.flush := !txPhysicalEnabled
+  // 【详注】两个 bank 的 push 数据都接到同一个 OHCI TX Stream，push.valid 决定实际写入哪个 bank。
+  txBuffer0.io.push.fragment := io.ctrl.tx.fragment
+  txBuffer0.io.push.last := io.ctrl.tx.last
+  txBuffer1.io.push.fragment := io.ctrl.tx.fragment
+  txBuffer1.io.push.last := io.ctrl.tx.last
+
+  // 当前包收到 last 前，后续字节始终写入同一个 Filling bank。
+  // 没有 Filling bank 时，新包优先选择空闲的 bank0，其次选择 bank1。
+  // 【详注】txFillAvailable 表示至少存在可继续填充或可开始新包的 bank。
+  // 【详注】txFillBank1=False 选择 bank0，True 选择 bank1。
+  val txFillAvailable = Bool()
+  val txFillBank1 = Bool()
+  // 【详注】组合逻辑默认选择 bank0 并假定可用；后面的优先链覆盖默认值。
+  txFillAvailable := True
+  txFillBank1 := False
+  // 【详注】优先继续已有 Filling bank，保证一个包不会跨两个 FIFO。
+  when(txBufferState0 === TxBufferState.Filling) {
+    txFillBank1 := False
+  } elsewhen(txBufferState1 === TxBufferState.Filling) {
+    txFillBank1 := True
+  // 【详注】没有半包时，新包固定先用 bank0，bank0 忙时再用 bank1。
+  } elsewhen(txBufferState0 === TxBufferState.Free) {
+    txFillBank1 := False
+  } elsewhen(txBufferState1 === TxBufferState.Free) {
+    txFillBank1 := True
+  } otherwise {
+    // 【详注】两个 bank 都处于 Ready/Sending 时，OHCI TX Stream 被反压。
+    txFillAvailable := False
+  }
+
+  // 【详注】只读取被选 bank 的 FIFO push.ready。
+  val txFillReady = txFillBank1 ? txBuffer1.io.push.ready | txBuffer0.io.push.ready
+  // 端口不可物理发送时仍消费 OHCI 的共享 TX 流，并在 last 后完成逻辑 EOP。
+  // 【详注】OHCI 发送器是共享流程；端口未 Enabled 时持续反压可能卡住控制器，所以这里进入丢弃模式。
+  val txDropMode = !txPhysicalEnabled
+  // 【详注】FaultLock 一律反压。正常模式要求 bank 可用；丢弃模式直接接受每个字节。
+  io.ctrl.tx.ready := !txFault && (txDropMode || (txFillAvailable && txFillReady))
+  // 【详注】只有普通物理发送模式才真正向 FIFO 写入；丢弃模式只完成上游握手。
+  txBuffer0.io.push.valid :=
+    io.ctrl.tx.valid && txPhysicalEnabled && !txFault && txFillAvailable && !txFillBank1
+  txBuffer1.io.push.valid :=
+    io.ctrl.tx.valid && txPhysicalEnabled && !txFault && txFillAvailable && txFillBank1
+  val txPushFire = io.ctrl.tx.valid && io.ctrl.tx.ready
+  // 【详注】在丢弃模式接受 last 时，后面直接产生逻辑 txEop，释放 OHCI 当前发送事务。
+  val txDropLast = txDropMode && txPushFire && io.ctrl.tx.last
+
+  // UTMI 只从已收齐整包的 Sending bank 取数，避免源端空拍中断 TXVALID。
+  val txSending0 = txBufferState0 === TxBufferState.Sending
+  val txSending1 = txBufferState1 === TxBufferState.Sending
+  val txSendActive = txSending0 || txSending1
+  // 【详注】Sending 状态和 FIFO pop.valid 同时成立，才有可以持续交给 USB3500 的字节。
+  val txPopValid = (txSending0 && txBuffer0.io.pop.valid) || (txSending1 && txBuffer1.io.pop.valid)
+
+  // 【详注】数据多路器按 Sending bank 选 FIFO 输出；状态机保证同一时刻最多一个 bank 为 Sending。
+  io.utmi.dataO := txSending1 ? txBuffer1.io.pop.fragment | txBuffer0.io.pop.fragment
+  // 【详注】完整包已经全部缓存，因此 TXVALID 断言后不会受上游 Stream 空洞影响。
+  io.utmi.txValid := txPhysicalEnabled && txSendActive && txPopValid
+  io.utmi.dataOe := io.utmi.txValid
+  // 【详注】USB3500 的 txReady 和 Link 的 txValid 同时有效时，选中 FIFO 才弹出一个字节。
+  txBuffer0.io.pop.ready :=
+    txPhysicalEnabled && txSending0 && io.utmi.txReady && io.utmi.txValid
+  txBuffer1.io.pop.ready :=
+    txPhysicalEnabled && txSending1 && io.utmi.txReady && io.utmi.txValid
+
+  // 【详注】last 字节在 UTMI 边界真正完成握手，表示 USB3500 已经消费这个包的最后一个数据字节。
+  val txLastAccepted =
+    (txBuffer0.io.pop.fire && txBuffer0.io.pop.last) ||
+      (txBuffer1.io.pop.fire && txBuffer1.io.pop.last)
+  // 【详注】Ready 或 Sending 都代表存在一个已收齐的包；Filling 半包不计入这里。
+  val txBufferedPacketComplete =
+    txBufferState0 === TxBufferState.Ready ||
+      txBufferState0 === TxBufferState.Sending ||
+      txBufferState1 === TxBufferState.Ready ||
+      txBufferState1 === TxBufferState.Sending
+  // 端口状态在物理包中途变化时终止 UTMI 驱动，并释放正在等待 txEop 的 OHCI 事务。
+  // 【详注】离开 Enabled 后 FIFO 会被 flush；若已有完整包，就用 abort 脉冲告诉 OHCI 该发送流程已经结束。
+  val txPhysicalAbort = !txPhysicalEnabled && txBufferedPacketComplete
+  // 【详注】last 已发送、EOP 物理线路尚未完成时离开 Enabled，也需要解除 OHCI 等待。
+  val txEopWaitAbort = !txPhysicalEnabled &&
+    (txEopState === TxEopState.WaitSe0 || txEopState === TxEopState.WaitJ)
+
+  io.ctrl.txEop := txEopPulse
+  // 【详注】默认清零形成单周期脉冲；下方多个条件可以在本周期重新置 True。
+  txEopPulse := False
+
+  // 【详注】==================== 正常包物理 EOP 状态机 ====================
+  // 【详注】非 Enabled 状态清理普通 EOP 流程。FaultLock 特意排除，保持故障粘滞直到 UTMI 域复位。
+  when(!txPhysicalEnabled && (txEopState =/= TxEopState.FaultLock)) {
+    when(txPhysicalAbort || txEopWaitAbort) {
+      txEopPulse := True
+    }
+    txEopState := TxEopState.Idle
+    txFaultReason := TxFaultReason.NoFault
+    txWaitCounter := 0
+    txIpdCounter := 0
+  } otherwise {
+    switch(txEopState) {
+      is(TxEopState.Idle) {
+        txWaitCounter := 0
+        txIpdCounter := 0
+        // 【详注】last 字节被 PHY 接受后，TXVALID 随 FIFO 结束而撤销，USB3500开始生成物理 EOP。
+        when(txLastAccepted) {
+          txEopState := TxEopState.WaitSe0
+        }
+      }
+
+      is(TxEopState.WaitSe0) {
+        // 【详注】先观察 EOP 的 SE0 部分；看到后转去等待 J。
+        when(lineSe0) {
+          txEopState := TxEopState.WaitJ
+          txWaitCounter := 0
+        } elsewhen(txWaitCounter === timing.txEopTimeoutCycles - 1) {
+          // 【详注】USB3500一直没有报告 SE0，锁定发送并记录故障原因。
+          txEopState := TxEopState.FaultLock
+          txFaultReason := TxFaultReason.WaitSe0Timeout
+        } otherwise {
+          txWaitCounter := txWaitCounter + 1
+        }
+      }
+
+      is(TxEopState.WaitJ) {
+        // 【详注】J 表示 EOP 已经从 SE0 恢复到空闲极性，此时向 OHCI报告一次 txEop。
+        when(lineJ) {
+          txEopState := TxEopState.InterPacket
+          txEopPulse := True
+          txWaitCounter := 0
+          txIpdCounter := 0
+        } elsewhen(txWaitCounter === timing.txEopTimeoutCycles - 1) {
+          txEopState := TxEopState.FaultLock
+          txFaultReason := TxFaultReason.WaitJTimeout
+        } otherwise {
+          txWaitCounter := txWaitCounter + 1
+        }
+      }
+
+      is(TxEopState.InterPacket) {
+        // 【详注】包间隔只统计连续 J；任何非 J 都会把计数归零。
+        when(lineJ) {
+          when(txIpdCounter === txIpdLast) {
+            txEopState := TxEopState.Idle
+            txIpdCounter := 0
+          } otherwise {
+            txIpdCounter := txIpdCounter + 1
+          }
+        } otherwise {
+          txIpdCounter := 0
+        }
+      }
+
+      is(TxEopState.FaultLock) {
+        // 粘滞故障只由当前 UTMI 时钟域复位清除。
+        // 【详注】FaultLock 没有退出赋值，端口 power-off、disconnect、reset 均无法清除它。
+      }
+    }
+  }
+
+  // 【详注】丢弃模式没有真实物理 EOP；接受 last 的周期直接给 OHCI 一个逻辑完成脉冲。
+  when(txDropLast) {
+    txEopPulse := True
+  }
+
+  // last 入队后封存整包，发送端领取 Ready bank，last 出队后释放对应 bank。
+  // 【详注】==================== 双 bank 所有权和先来先发控制 ====================
+  when(!txPhysicalEnabled) {
+    // 【详注】端口不可发送时，两个状态寄存器和先后标志与 FIFO flush 一起回到初始值。
+    txBufferState0 := TxBufferState.Free
+    txBufferState1 := TxBufferState.Free
+    txFirstReadyBank1 := False
+  } otherwise {
+    // 【详注】上游每接受一个字节都更新选中 bank；非 last 保持 Filling，last 将其封存为 Ready。
+    when(txPushFire) {
+      when(txFillBank1) {
+        txBufferState1 := io.ctrl.tx.last ? TxBufferState.Ready | TxBufferState.Filling
+        when(io.ctrl.tx.last) {
+          // 【详注】bank1 完成时若 bank0 已经 Ready，则 bank0 更早；否则 bank1 是当前最早 Ready bank。
+          txFirstReadyBank1 := txBufferState0 =/= TxBufferState.Ready
+        }
+      } otherwise {
+        txBufferState0 := io.ctrl.tx.last ? TxBufferState.Ready | TxBufferState.Filling
+        when(io.ctrl.tx.last) {
+          // 【详注】bank0 完成时若 bank1 已经 Ready，则 bank1 更早；否则 bank0 是当前最早 Ready bank。
+          txFirstReadyBank1 := txBufferState1 === TxBufferState.Ready
+        }
+      }
+    }
+
+    // 【详注】没有正在发送的 bank，并且 EOP/IPD 允许启动时，领取一个 Ready bank。
+    when(!txSendActive && txLaunchAllowed) {
+      when(txBufferState0 === TxBufferState.Ready && txBufferState1 === TxBufferState.Ready) {
+        // 【详注】两个 bank 同时 Ready 时使用 1 bit 的先后记录，避免固定优先 bank0 造成包重排。
+        when(txFirstReadyBank1) {
+          txBufferState1 := TxBufferState.Sending
+        } otherwise {
+          txBufferState0 := TxBufferState.Sending
+        }
+      } elsewhen(txBufferState0 === TxBufferState.Ready) {
+        txBufferState0 := TxBufferState.Sending
+      } elsewhen(txBufferState1 === TxBufferState.Ready) {
+        txBufferState1 := TxBufferState.Sending
+      }
+    }
+
+    // 【详注】last 字节出队后立即释放对应 bank；物理 EOP 的完成由独立 txEopState 继续跟踪。
+    when(txLastAccepted) {
+      when(txSending1) {
+        txBufferState1 := TxBufferState.Free
+      } otherwise {
+        txBufferState0 := TxBufferState.Free
+      }
+    }
+  }
+
+  // 【详注】==================== ILA/仿真调试镜像 ====================
+  io.debug.txEopState := txEopState.asBits
+  io.debug.txLastAccepted := txLastAccepted
+  io.debug.ctrlTxEop := io.ctrl.txEop
+  io.debug.txLaunchAllowed := txLaunchAllowed
+  io.debug.txFault := txFault
+  io.debug.txFaultReason := txFaultReason.asBits
+  io.debug.txWaitCounter := txWaitCounter.asBits
+  io.debug.txIpdCounter := txIpdCounter.asBits
+  io.debug.portLowSpeed := portLowSpeed
+  io.debug.txBufferState0 := txBufferState0.asBits
+  io.debug.txBufferState1 := txBufferState1.asBits
+
+  // 【详注】==================== UTMI RX 到 OHCI Flow 的转换 ====================
+  // 【详注】只在 Enabled 状态向 OHCI暴露接收活动；其他状态的线路变化由端口状态机消费。
+  io.ctrl.rx.active := io.utmi.rxActive && state === PortState.Enabled
+  // OHCI 只在 flow.valid 周期采样 stuffingError；RXERROR 独立于 RXVALID 时补一个错误 beat。
+  io.ctrl.rx.flow.valid :=
+    io.utmi.rxActive && (io.utmi.rxValid || io.utmi.rxError) && state === PortState.Enabled
+  io.ctrl.rx.flow.data := io.utmi.dataI
+  // 【详注】rxError 在对应 Flow beat 上直接映射成 stuffingError，供 OHCI 接收状态机终止或标记事务。
+  io.ctrl.rx.flow.stuffingError := io.utmi.rxError
+
+  // 【详注】==================== 端口控制接口的组合默认值 ====================
+  port.lowSpeed := portLowSpeed
+  // 【详注】板级过流未接入，因此端口级过流也固定为 False。
+  port.overcurrent := False
+  // 【详注】connect/disconnect/remoteResume 都是脉冲事件，默认 False，只在命中条件的周期置 True。
+  port.connect := False
+  port.disconnect := False
+  port.remoteResume := False
+  // 【详注】disable.ready 恒为 True，表示 OHCI 的 disable Event 可随时完成握手；状态分支是否消费该命令见后文。
+  port.disable.ready := True
+  // 【详注】reset/suspend/resume 默认不完成，只有相应状态达到完成点时才置 ready。
+  port.reset.ready := False
+  port.suspend.ready := False
+  port.resume.ready := False
+
+  // 【详注】连接消抖、断开过滤和复位/恢复阶段分别使用三个计数器。
+  val attachCounter = Reg(UInt(log2Up(timing.attachDebounceCycles) bits)) init 0
+  val disconnectCounter = Reg(UInt(log2Up(timing.disconnectCycles) bits)) init 0
+  val stateCounter = Reg(UInt(stateCounterWidth bits)) init 0
+  // 参考 UsbLsFsPhy：断连过滤在 Disabled、Enabled 和 Suspended 三个状态持续工作。
+  // 【详注】Resetting 和 ResumeEopSe0 会主动产生 SE0，故意排除在断开监控之外。
+  val disconnectMonitored =
+    state === PortState.Disabled || state === PortState.Enabled || state === PortState.Suspended
+  // 【详注】disconnectEvent 是本时钟周期的组合事件，默认 False。
+  val disconnectEvent = Bool()
+  disconnectEvent := False
+
+  // 【详注】只有连续看到 SE0 或 VBUS 无效达到 disconnectCycles 才产生断开事件；中间恢复会清零计数。
+  when(disconnectMonitored && (lineSe0 || !io.utmi.vbusValid)) {
+    when(disconnectCounter === timing.disconnectCycles - 1) {
+      disconnectCounter := 0
+      disconnectEvent := True
+    } otherwise {
+      disconnectCounter := disconnectCounter + 1
+    }
+  } otherwise {
+    disconnectCounter := 0
+  }
+
+  // 【详注】==================== 下行端口主状态机 ====================
+  // 【详注】全局 USB reset 或逻辑端口掉电优先级最高，无条件回到 PowerOff 并清零所有主状态计数器。
+  when(io.ctrl.usbReset || !port.power) {
+    state := PortState.PowerOff
+    attachCounter := 0
+    disconnectCounter := 0
+    stateCounter := 0
+  } otherwise {
+    // 【详注】合格断开事件优先于各状态内部命令，统一产生一次 disconnect 脉冲并转 Disconnected。
+    when(disconnectEvent) {
+      port.disconnect := True
+      stateCounter := 0
+      state := PortState.Disconnected
+    } otherwise {
+      switch(state) {
+        is(PortState.PowerOff) {
+          // 【详注】当上面的掉电条件已经解除，PowerOff 只停留一个周期，随后开始检测设备连接。
+          state := PortState.Disconnected
+        }
+
+        is(PortState.Disconnected) {
+          // 【详注】需要 VBUS 有效，并且 LINESTATE 为 FS-J 或 LS-J，才累计连接消抖时间。
+          when(io.utmi.vbusValid && lineAttached) {
+            when(attachCounter === timing.attachDebounceCycles - 1) {
+              // 【详注】消抖结束时根据当前 J 极性锁存速度：LINESTATE=10 表示低速设备。
+              portLowSpeed := lineLsJ
+              // 【详注】connect 是单周期脉冲，经 CtrlCc 跨时钟域后设置 OHCI 根端口连接状态。
+              port.connect := True
+              attachCounter := 0
+              // 【详注】新连接默认尚未启用，等待 OHCI 发出端口 reset。
+              state := PortState.Disabled
+            } otherwise {
+              attachCounter := attachCounter + 1
+            }
+          } otherwise {
+            // 【详注】消抖期间只要线路回到 SE0/SE1 或 VBUS 失效，连接计数从头开始。
+            attachCounter := 0
+          }
+        }
+
+        is(PortState.Disabled) {
+          // 【详注】端口已经报告连接，普通包收发仍关闭；OHCI reset 请求启动 50 ms SE0。
+          when(port.reset.valid) {
+            stateCounter := 0
+            state := PortState.Resetting
+          }
+        }
+
+        is(PortState.Resetting) {
+          // 选择 HS 端接会在下行端口产生 SE0；本设计不进入 HS 握手。
+          // 【详注】默认 OPMODE 保持 00，XCVRSEL=00 且 TERMSEL=0 使 USB3500 的下行端口呈现复位 SE0。
+          io.utmi.xcvrSel := B"00"
+          io.utmi.termSel := False
+          when(stateCounter === timing.resetCycles - 1) {
+            stateCounter := 0
+            // 【详注】reset.ready 与状态进入 Enabled 同周期产生，完成 CtrlPort.reset Event 握手。
+            port.reset.ready := True
+            state := PortState.Enabled
+          } otherwise {
+            stateCounter := stateCounter + 1
+          }
+        }
+
+        is(PortState.Enabled) {
+          // 【详注】Enabled 内命令优先级依次为 disable、suspend、reset、全局/端口 resume。
+          when(port.disable.valid) {
+            // 【详注】离开 Enabled 后 TX FIFO 在下一组合周期被 flush，普通 RX 也停止向 OHCI转发。
+            state := PortState.Disabled
+          } elsewhen(port.suspend.valid) {
+            // 【详注】suspend 在接受命令的同周期完成握手，然后进入 Suspended。
+            port.suspend.ready := True
+            state := PortState.Suspended
+          } elsewhen(port.reset.valid) {
+            stateCounter := 0
+            state := PortState.Resetting
+          } elsewhen(io.ctrl.usbResume || port.resume.valid) {
+            // 【详注】usbResume 来自 OHCI 全局功能状态，port.resume.valid 来自清除端口挂起请求。
+            stateCounter := 0
+            state := PortState.Resuming
+          }
+        }
+
+        is(PortState.Suspended) {
+          // 【详注】当前第一阶段 SUSPENDN 仍为 1；“挂起”体现为停止普通 TX/RX，并保留线路状态观察能力。
+          when(port.disable.valid) {
+            state := PortState.Disabled
+          } elsewhen(port.reset.valid) {
+            // 【详注】允许端口从挂起状态直接进入复位。
+            stateCounter := 0
+            state := PortState.Resetting
+          } elsewhen(port.resume.valid || io.ctrl.usbResume || lineK) {
+            // 【详注】软件端口恢复、OHCI 全局恢复、设备线路 K 任一成立都会启动 Resume K。
+            // 【详注】只有本周期 lineK 为真时才报告 remoteResume；软件发起的恢复不会置该脉冲。
+            port.remoteResume := lineK
+            stateCounter := 0
+            state := PortState.Resuming
+          }
+        }
+
+        is(PortState.Resuming) {
+          // 【详注】OPMODE=10 关闭 NRZI 和 bit stuffing；DATA 全 0 在选定 LS/FS 收发器上形成连续 K。
+          io.utmi.opMode := B"10"
+          io.utmi.txValid := True
+          io.utmi.dataOe := True
+          io.utmi.dataO := B(0, 8 bits)
+          when(stateCounter === timing.resumeCycles - 1) {
+            stateCounter := 0
+            // 【详注】当前实现此处已经完成 port.resume Event 握手，随后继续执行固定长度 Resume EOP。
+            port.resume.ready := True
+            state := PortState.ResumeEopSe0
+          } otherwise {
+            stateCounter := stateCounter + 1
+          }
+        }
+
+        is(PortState.ResumeEopSe0) {
+          // USB 2.0 7.1.7.7：resume K 后驱动两个低速 bit time 的 SE0。
+          // 【详注】该状态撤销普通 TXVALID，并通过 XCVRSEL=00、TERMSEL=0 主动产生固定 80 周期 SE0。
+          // 【详注】该状态排除在断开监控范围外，自身驱动的 SE0 不会被识别为设备断开。
+          io.utmi.xcvrSel := B"00"
+          io.utmi.termSel := False
+          when(stateCounter === timing.resumeEopSe0Cycles - 1) {
+            stateCounter := 0
+            state := PortState.ResumeEopJ
+          } otherwise {
+            stateCounter := stateCounter + 1
+          }
+        }
+
+        is(PortState.ResumeEopJ) {
+          // 保持一个低速 bit time 的 J 窗口，然后恢复包发送。
+          // 【详注】该状态使用文件前面的 UTMI 默认值：正常速度、TERMSEL=1、OPMODE=00、TXVALID=0。
+          // 【详注】线路 J 由正常端接和设备上拉形成；代码只等待固定 40 周期，不显式驱动数据字节。
+          when(stateCounter === timing.resumeEopJCycles - 1) {
+            stateCounter := 0
+            // 【详注】J 窗口结束后才重新允许普通 TX bank 和 RX Flow。
+            state := PortState.Enabled
+          } otherwise {
+            stateCounter := stateCounter + 1
+          }
+        }
+      }
+    }
+  }
+}

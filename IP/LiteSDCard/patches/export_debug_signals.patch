@@ -1,0 +1,97 @@
+diff --git a/litesdcard/core.py b/litesdcard/core.py
+index 937b535..fdf345f 100644
+--- a/litesdcard/core.py
++++ b/litesdcard/core.py
+@@ -83,0 +84,3 @@ class SDCore(LiteXModule):
++        self.debug_data_read_count = data_read_count
++        self.debug_state = Signal(3)
++        self.write_data_active = Signal()
+@@ -89,0 +93,3 @@ class SDCore(LiteXModule):
++        self.debug_cmd = cmd
++        self.debug_data_type = data_type
++        self.debug_cmd_send = cmd_send
+@@ -135,0 +143 @@ class SDCore(LiteXModule):
++            self.debug_state.eq(0),
+@@ -158,0 +167 @@ class SDCore(LiteXModule):
++            self.debug_state.eq(1),
+@@ -193,0 +203 @@ class SDCore(LiteXModule):
++            self.debug_state.eq(2),
+@@ -257,0 +268,2 @@ class SDCore(LiteXModule):
++            self.debug_state.eq(3),
++            self.write_data_active.eq(1),
+@@ -282,0 +295 @@ class SDCore(LiteXModule):
++            self.debug_state.eq(4),
+diff --git a/litesdcard/phy.py b/litesdcard/phy.py
+index 3c29e9d..ea12949 100644
+--- a/litesdcard/phy.py
++++ b/litesdcard/phy.py
+@@ -171,0 +172 @@ class SDPHYCMDW(LiteXModule):
++        self.debug_state = Signal(2)
+@@ -176,0 +178 @@ class SDPHYCMDW(LiteXModule):
++            self.debug_state.eq(0),
+@@ -184,0 +187 @@ class SDPHYCMDW(LiteXModule):
++            self.debug_state.eq(1),
+@@ -206,0 +210 @@ class SDPHYCMDW(LiteXModule):
++            self.debug_state.eq(2),
+@@ -235,0 +240 @@ class SDPHYCMDR(LiteXModule):
++        self.debug_state = Signal(3)
+@@ -240,0 +246 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(0),
+@@ -251,0 +258 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(1),
+@@ -266,0 +274 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(2),
+@@ -295,0 +304 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(3),
+@@ -313,0 +323 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(4),
+@@ -333,0 +344 @@ class SDPHYCMDR(LiteXModule):
++            self.debug_state.eq(5),
+@@ -361,0 +373 @@ class SDPHYDATAW(LiteXModule):
++        self.debug_state = Signal(4)
+@@ -379,0 +392 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(0),
+@@ -389,0 +403 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(1),
+@@ -401,0 +416 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(2),
+@@ -475,0 +491 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(3),
+@@ -482,0 +499 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(4),
+@@ -494,0 +512 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(5),
+@@ -503,0 +522 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(6),
+@@ -520,0 +540 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(7),
+@@ -532,0 +553 @@ class SDPHYDATAW(LiteXModule):
++            self.debug_state.eq(8),
+@@ -568,0 +590,9 @@ class SDPHYDATAR(LiteXModule):
++        self.debug_count             = count
++        self.debug_crc_count         = crc_count
++        self.debug_crc_error         = crc_error
++        self.debug_crc_sample_enable = Signal()
++        self.debug_crc_error_next    = Signal()
++        self.debug_state             = Signal(3)
++        self.debug_crc_correct       = crc_correct
++        self.debug_data_done         = data_done
++        self.debug_data_count        = data_count
+@@ -571,0 +602,2 @@ class SDPHYDATAR(LiteXModule):
++        self.debug_datar_reset = datar_reset
++        self.debug_datar_valid = datar_valid
+@@ -578,0 +611,4 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_crc_sample_enable.eq(
++                pads_in.valid & data_done & (crc_count < 16)
++            ),
++            self.debug_crc_error_next.eq(self.debug_crc_sample_enable & ~crc_correct),
+@@ -638,0 +675 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_state.eq(0),
+@@ -649,0 +687 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_state.eq(1),
+@@ -661,0 +700 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_state.eq(2),
+@@ -698,0 +738 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_state.eq(3),
+@@ -707,0 +748 @@ class SDPHYDATAR(LiteXModule):
++            self.debug_state.eq(4),

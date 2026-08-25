@@ -1,0 +1,94 @@
+#
+.idea
+
+# Scala/SBT and IDE generated state. Keep build.sbt, project/build.properties,
+# and Chisel source files tracked.
+.bsp/
+target/
+test_run_dir/
+project/target/
+.metals/
+.bloop/
+.scala-build/
+
+# Chisel generated Verilog output.
+generated/
+# Local CPU implementation copied into the lab tree. Keep only the directory
+# marker in the public tree; generated CPU sources remain local.
+IP/myCPU/*
+!IP/myCPU/.gitkeep
+
+# Vivado project generated state. Keep *.xpr and board *.xdc tracked.
+**/*.cache/
+**/*.hw/
+**/*.ip_user_files/
+**/*.sim/
+**/*.runs/
+**/*.gen/
+**/*.srcs/
+**/.Xil/
+*.jou
+*.str
+*.log
+*.pb
+*.wdb
+*.wdf
+*.backup.jou
+*.backup.log
+ip_upgrade.log
+
+# Vivado generated IP products. Keep source-level IP config files (*.xci,
+# *.xcix, *.prj, component.xml) under version control.
+IP/xilinx_ip/**/*.dcp
+IP/xilinx_ip/**/*.veo
+IP/xilinx_ip/**/*.vho
+IP/xilinx_ip/**/*_sim_netlist.v
+IP/xilinx_ip/**/*_sim_netlist.vhdl
+IP/xilinx_ip/**/*_stub.v
+IP/xilinx_ip/**/*_stub.vhdl
+IP/xilinx_ip/**/*_ooc.xdc
+IP/xilinx_ip/**/*_board.xdc
+IP/xilinx_ip/**/*_clocks.xdc
+IP/xilinx_ip/**/*_impl_clocks.xdc
+IP/xilinx_ip/**/summary.log
+IP/xilinx_ip/**/*_xmdf.tcl
+IP/xilinx_ip/**/xil_txt.in
+IP/xilinx_ip/**/xil_txt.out
+IP/xilinx_ip/**/*.xml
+!IP/xilinx_ip/**/component.xml
+IP/xilinx_ip/**/*.v
+IP/xilinx_ip/**/*.xdc
+IP/xilinx_ip/**/*.vh
+
+# Generated directories inside Vivado IP instance folders.
+IP/xilinx_ip/**/doc/
+IP/xilinx_ip/**/hdl/
+IP/xilinx_ip/**/ip/
+IP/xilinx_ip/**/ipshared/
+IP/xilinx_ip/**/misc/
+IP/xilinx_ip/**/sim/
+IP/xilinx_ip/**/simulation/
+IP/xilinx_ip/**/synth/
+IP/xilinx_ip/**/user_design/
+IP/xilinx_ip/mig_axi_32*/mig_axi_32/
+IP/xilinx_ip/**/*.bda
+
+# ILA debug capture data. Keep the save script under scripts/ tracked.
+docs/debug/mac/ila/success/
+docs/debug/mac/ila/failure/
+
+# local reference code
+IP/spinal/usb/src/main/scala/usb/ohci/UsbOhciAxi4Apb3.scala
+IP/spinal/usb/simWorkspace/
+IP/spinal/interrupt/simWorkspace/
+
+# debug logs
+debug-sessions/
+docs/debug/**/raw_logs/
+docs/debug/**/log/
+*.log
+*.jou
+*.pb
+.agent-artifacts/
+.agent-build/
+__pycache__/

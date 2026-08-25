@@ -1,0 +1,83 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: CPUSTCSoc
+Source: https://github.com/CPUSTCPU/CPUSTC-Soc
+
+# CPUSTCPU-owned SoC source, integration code, tests, scripts and documentation.
+Files: .gitignore README.md SECURITY.md TODO.md LICENSES/README.md
+       build.sbt project/build.properties sbt_run_all.sh
+       src/**
+       scripts/**
+       docs/**
+       fpga/xc7a200t/CPUSTCPUSoc/build_bitstream.tcl
+       fpga/xc7a200t/CPUSTCPUSoc/resume_bitstream.tcl
+       fpga/xc7a200t/sdio_timing.xdc
+       fpga/xc7a200t/soc_up.xdc
+       IP/CAMERA/README.md
+       IP/CAMERA/rtl/cpustc_camera_axi_writer.v
+       IP/CAMERA/rtl/cpustc_camera_capture.v
+       IP/CAMERA/rtl/cpustc_dvp_rx.v
+       IP/CAMERA/tb/**
+       IP/LiteSDCard/UPSTREAM.md
+       IP/LiteSDCard/generator/**
+       IP/LiteSDCard/patches/**
+       IP/LiteSDCard/scripts/**
+       IP/LiteSDCard/tests/**
+       IP/TensorCore/README.md IP/TensorCore/build.sbt IP/TensorCore/project/build.properties
+       IP/TensorCore/src/main/resources/verilog-axi/UPSTREAM.md
+       IP/TensorCore/src/main/scala/tensorcore/**
+       IP/TensorCore/src/test/**
+       IP/spinal/**
+Copyright: 2026 CPUSTCPU Project
+License: MIT
+
+# OpenXiangShan/fudian source. XiangShan publishes this source under Mulan PSL
+# v2; FMUL.scala also contains a CPUSTCPU-owned pipeline alignment change.
+Files: IP/TensorCore/src/main/scala/fudian/FMUL.scala
+Copyright: OpenXiangShan/fudian contributors
+           CPUSTCPU Project
+License: MulanPSL-2.0 AND MIT
+
+Files: IP/TensorCore/src/main/scala/fudian/RoundingUnit.scala
+       IP/TensorCore/src/main/scala/fudian/package.scala
+       IP/TensorCore/src/main/scala/fudian/utils/*
+Copyright: OpenXiangShan/fudian contributors
+License: MulanPSL-2.0
+
+# Loongson legacy RTL; retain the license headers from the source files.
+Files: IP/AMBA/* IP/APB_DEV/* IP/CONFREG/* IP/DMA/* IP/MAC/* IP/SPI/* chip/xc7a200t/config.h
+Copyright: 2016 Loongson Technology Corporation Limited
+License: BSD-3-Clause
+
+# OpenCores I2C; retain its original notice and disclaimer.
+Files: IP/IIC/*
+Copyright: 2001 Richard Herveille
+License: LicenseRef-OpenCores-I2C
+
+# LiteSDCard generated upstream artifacts.
+Files: IP/LiteSDCard/LICENSE
+       IP/LiteSDCard/csr.csv
+       IP/LiteSDCard/rtl/litesdcard_core.v
+Copyright: 2017-2024 Enjoy-Digital
+           2017-2018 LambdaConcept
+License: BSD-2-Clause
+
+# alexforencich/verilog-axis.
+Files: IP/CAMERA/rtl/axis_async_fifo.v IP/CAMERA/syn/axis_async_fifo.tcl IP/CAMERA/LICENSE-verilog-axis
+Copyright: 2014-2023 Alex Forencich
+License: MIT
+
+# alexforencich/verilog-axi.
+Files: IP/TensorCore/src/main/resources/verilog-axi/COPYING
+       IP/TensorCore/src/main/resources/verilog-axi/axi_dma_rd.v
+       IP/TensorCore/src/main/resources/verilog-axi/axi_dma_wr.v
+Copyright: Alex Forencich
+License: MIT
+
+# AMD/Xilinx generated IP and project metadata. No additional project license
+# is granted to these vendor files.
+Files: IP/xilinx_ip/*
+       fpga/xc7a200t/CPUSTCPUSoc/CPUSTCPUSoc.xpr
+       fpga/xc7a200t/programmer_by_uart.bit
+Copyright: AMD, Inc.
+           Xilinx, Inc.
+License: LicenseRef-AMD-Xilinx-Tools

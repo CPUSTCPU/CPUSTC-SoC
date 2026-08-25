@@ -1,0 +1,8 @@
+AMD/Xilinx tool-generated and IP configuration files retain their embedded
+copyright notices and are subject to the license terms supplied with the AMD
+Vivado tools and the individual IP cores.
+
+This repository does not grant an additional license to AMD/Xilinx material.
+Users are responsible for obtaining the tools and accepting the applicable
+terms before generating, simulating, synthesizing, or distributing products
+derived from those files.
