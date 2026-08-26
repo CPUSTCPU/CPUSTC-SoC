@@ -46,7 +46,8 @@ CPU local mux 只负责 AXI3 地址路由和响应选择，不负责协议、位
 | `src/main/scala/verilog/soc_top.v` | Vivado top `soc_top` 的板级 wrapper |
 | `src/main/scala/main/main.scala` | 根 Chisel elaboration 入口，默认使用 `SocFeatureConfig.full` |
 | `IP/spinal/` | Interrupt、LCD DMA、USB 独立 SpinalHDL 工程 |
-| `IP/xilinx_ip/` | 可跟踪的 AMD/Xilinx IP 配置和 Block Design 元数据 |
+| `fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs/` | 工程本地 BD、standalone IP 配置和 BD 子 IP `.xci`，唯一维护源 |
+| `IP/xilinx_ip/` | 不属于本地 `sources_1` 文件集的其他 AMD/Xilinx IP 配置 |
 
 `generated/xc7a200t/` 下的 SystemVerilog 是生成结果，不是手工编辑入口；生成命令见 [`build.md`](build.md)。
 

@@ -67,12 +67,16 @@ python3 scripts/gen_cpustcore_adapter.py
 python3 scripts/gen_cpustcore_adapter.py --check
 ```
 
-After changing a local Vivado IP or Block Design, synchronize tracked metadata:
+After changing a local Vivado IP or Block Design, save the project-local
+`.srcs` source configurations and stage them directly with Git:
 
 ```bash
-./scripts/sync_vivado_sources.sh --stage
-./scripts/sync_vivado_sources.sh --check
+git add fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr \
+  fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs
 ```
+
+The project-local `.srcs` files are the single source of truth; they are not
+copied into `IP/xilinx_ip`.
 
 The complete build and Vivado flow is described in [`docs/build.md`](docs/build.md).
 

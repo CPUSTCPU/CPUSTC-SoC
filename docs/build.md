@@ -82,16 +82,31 @@ IP/LiteSDCard/scripts/generate_litesdcard_axi.sh --check
 
 ## 4. Vivado 工程
 
-### 4.1 同步可跟踪配置
+### 4.1 维护项目本地 IP/Block Design
 
-Vivado GUI 产生的本地 IP/Block Design 位于被 Git 忽略的 `CPUSTC-SoC.srcs/`。修改完成后，从仓库根目录执行：
+当前工程的 BD、standalone IP 配置和 BD 子 IP `.xci` 都以项目本地
+`fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs/` 为唯一维护源，并由 Git 跟踪。
+不要再把这些文件复制到 `IP/xilinx_ip/`；后者只保留不属于本地
+`sources_1` 文件集的其他 vendor IP 配置。
+
+修改 Vivado 工程并保存后，直接从仓库根目录暂存项目文件：
 
 ```bash
-./scripts/sync_vivado_sources.sh --stage
-./scripts/sync_vivado_sources.sh --check
+git add fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr \
+  fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.srcs
 ```
 
-`--stage` 只暂存显式映射的 `.xci`、`.xcix`、主 Block Design `.bd` 和 XPR 文件；`--check` 不改写文件，会检查 Git index、XPR file set、Block Design 本地重建、IP lock 状态和综合 compile order。
+`.gitignore` 只放行当前工程需要维护的主 `.bd`、standalone `.xci` 和 BD 子 IP
+`.xci`；`.gen`、`.bda` 等生成物不会被加入 Git。不要把这些文件复制到
+`IP/xilinx_ip/`。
+
+需要重建生成物时，在 Vivado 中打开工程并对 BD/IP 执行 `Generate Output Products`：
+
+```text
+fpga/xc7a200t/CPUSTC-SoC/CPUSTC-SoC.xpr
+```
+
+生成的 HDL、约束和 OOC 运行输入位于 `.gen` 下，仍不纳入 Git。
 
 ### 4.2 打开、综合和实现
 
@@ -119,7 +134,7 @@ fpga/xc7a200t/sdio_timing.xdc
 ```bash
 python3 scripts/test_gen_axi_interconnect_chisel.py
 python3 scripts/test_gen_cpustcore_adapter.py
-bash -n sbt_run_all.sh scripts/sync_vivado_sources.sh IP/LiteSDCard/scripts/generate_litesdcard_axi.sh
+bash -n sbt_run_all.sh IP/LiteSDCard/scripts/generate_litesdcard_axi.sh
 sbt test
 ```
 

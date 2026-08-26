@@ -60,7 +60,7 @@ sbt run
 sbt test
 ```
 
-更新 CPUSTCore RTL 后，先运行 `python3 scripts/gen_cpustcore_adapter.py`，再运行 `--check` 检查适配器；Vivado 本地 IP 或 Block Design 变化后，使用 `scripts/sync_vivado_sources.sh --stage` 和 `--check` 同步、校验可跟踪配置。完整构建和 Vivado 流程见 [`docs/build.md`](docs/build.md)。
+更新 CPUSTCore RTL 后，先运行 `python3 scripts/gen_cpustcore_adapter.py`，再运行 `--check` 检查适配器；Vivado 本地 IP 或 Block Design 变化后，直接保存项目本地 `.srcs` 配置并用 Git 暂存。完整构建和 Vivado 流程见 [`docs/build.md`](docs/build.md)。
 
 ## 仓库结构
 
