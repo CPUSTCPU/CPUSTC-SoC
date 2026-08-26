@@ -19,8 +19,6 @@ object TwoDGpuRegisters {
   val identification: Int = 0x12c
   val capabilities: Int = 0x130
   val version: Int = 0x134
-  val srcSize: Int = 0x138
-  val dstSize: Int = 0x13c
 }
 
 /** 2D_GPU 可由软件枚举的能力位。 */
@@ -28,13 +26,12 @@ object TwoDGpuCapabilities {
   val fillRect: Int = 1 << 0
   val copyArea: Int = 1 << 1
   val imageBlit1: Int = 1 << 2
-  val yuyvScale: Int = 1 << 3
   val rgb565: Int = 1 << 8
   val overlapSafeCopy: Int = 1 << 9
 
   val value: Int =
-    fillRect | copyArea | imageBlit1 | yuyvScale | rgb565 | overlapSafeCopy
-  val interfaceVersion: Int = 2
+    fillRect | copyArea | imageBlit1 | rgb565 | overlapSafeCopy
+  val interfaceVersion: Int = 1
 }
 
 /** 2D_GPU 固化命令编号。 */
@@ -42,7 +39,6 @@ object TwoDGpuCommands {
   val fillRect: Int = 1
   val copyArea: Int = 2
   val imageBlit1: Int = 3
-  val yuyvScale: Int = 4
 }
 
 class TwoDGpuIO extends Bundle {
@@ -59,9 +55,8 @@ class TwoDGpuIO extends Bundle {
 
 /** 面向 RGB565 framebuffer 的小型二维图形加速器。
   *
-  * 模块固化 FILL_RECT、COPY_AREA、MSB-first 1-bit IMAGE_BLIT1 和
-  * YUYV_SCALE 操作。YUYV_SCALE 使用 BT.601 limited-range 转换、最近邻放大和
-  * RGB565 输出；APB 负责同步命令提交，AXI4 master 负责访问 DDR。
+  * 模块固化 FILL_RECT、COPY_AREA 和 MSB-first 1-bit IMAGE_BLIT1 操作；
+  * APB 负责同步命令提交，AXI4 master 负责访问 RGB565 framebuffer。
   */
 class TwoDGpu extends Module {
   override def desiredName: String = "TwoD_GPU"
@@ -82,8 +77,6 @@ class TwoDGpu extends Module {
   private val sizeReg = RegInit(0.U(32.W))
   private val foregroundReg = RegInit(0.U(32.W))
   private val backgroundReg = RegInit(0.U(32.W))
-  private val srcSizeReg = RegInit(0.U(32.W))
-  private val dstSizeReg = RegInit(0.U(32.W))
 
   private val busyReg = RegInit(false.B)
   private val doneReg = RegInit(false.B)
@@ -95,11 +88,6 @@ class TwoDGpu extends Module {
   private val dstY = dstXyReg(31, 16)
   private val width = sizeReg(15, 0)
   private val height = sizeReg(31, 16)
-  private val scaleSrcWidth = srcSizeReg(15, 0)
-  private val scaleSrcHeight = srcSizeReg(31, 16)
-  private val scaleDstWidth = dstSizeReg(15, 0)
-  private val scaleDstHeight = dstSizeReg(31, 16)
-
   private val Seq(
     sIdle,
     sSetup,
@@ -109,13 +97,8 @@ class TwoDGpu extends Module {
     sWriteAddress,
     sWriteData,
     sWriteResponse,
-    sBlitPrepare,
-    sScaleLoadAddress,
-    sScaleLoadData,
-    sScaleChunkPrepare,
-    sScalePixelRead,
-    sScalePixelStore
-  ) = Enum(14)
+    sBlitPrepare
+  ) = Enum(9)
   private val state = RegInit(sIdle)
 
   private val backwardReg = RegInit(false.B)
@@ -145,20 +128,6 @@ class TwoDGpu extends Module {
   private val readErrorSeen = RegInit(false.B)
   private val copyBuffer = Reg(Vec(16, UInt(32.W)))
 
-  private val scaleLoadAddress = RegInit(0.U(32.W))
-  private val scaleLoadWordsRemaining = RegInit(0.U(10.W))
-  private val scaleLoadPairIndex = RegInit(0.U(9.W))
-  private val scaleSourcePixelIndex = RegInit(0.U(10.W))
-  private val scaleXError = RegInit(0.U(17.W))
-  private val scaleYError = RegInit(0.U(17.W))
-  private val scalePreparePixelIndex = RegInit(0.U(6.W))
-  private val scaleLineBuffer = SyncReadMem(512, UInt(32.W))
-  private val scaleLineReadData = scaleLineBuffer.read(
-    scaleSourcePixelIndex(9, 1),
-    state === sScalePixelRead
-  )
-  private val scaleWriteBuffer = Reg(Vec(16, UInt(32.W)))
-
   private val registerOffset = io.apb.paddr(13, 0)
   private val registerOffsets = Seq(
     TwoDGpuRegisters.status,
@@ -174,9 +143,7 @@ class TwoDGpu extends Module {
     TwoDGpuRegisters.background,
     TwoDGpuRegisters.identification,
     TwoDGpuRegisters.capabilities,
-    TwoDGpuRegisters.version,
-    TwoDGpuRegisters.srcSize,
-    TwoDGpuRegisters.dstSize
+    TwoDGpuRegisters.version
   )
   private val knownRegister = registerOffsets
     .map(offset => registerOffset === offset.U)
@@ -213,9 +180,7 @@ class TwoDGpu extends Module {
     TwoDGpuRegisters.background.U -> backgroundReg,
     TwoDGpuRegisters.identification.U -> "h32444750".U,
     TwoDGpuRegisters.capabilities.U -> TwoDGpuCapabilities.value.U,
-    TwoDGpuRegisters.version.U -> TwoDGpuCapabilities.interfaceVersion.U,
-    TwoDGpuRegisters.srcSize.U -> srcSizeReg,
-    TwoDGpuRegisters.dstSize.U -> dstSizeReg
+    TwoDGpuRegisters.version.U -> TwoDGpuCapabilities.interfaceVersion.U
   ))
   io.apb.pready := true.B
   io.apb.pslverr := apbAccess && (!knownRegister || blockedWrite)
@@ -240,8 +205,6 @@ class TwoDGpu extends Module {
       is(TwoDGpuRegisters.size.U) { sizeReg := io.apb.pwdata }
       is(TwoDGpuRegisters.foreground.U) { foregroundReg := io.apb.pwdata }
       is(TwoDGpuRegisters.background.U) { backgroundReg := io.apb.pwdata }
-      is(TwoDGpuRegisters.srcSize.U) { srcSizeReg := io.apb.pwdata }
-      is(TwoDGpuRegisters.dstSize.U) { dstSizeReg := io.apb.pwdata }
     }
   }
 
@@ -249,9 +212,8 @@ class TwoDGpu extends Module {
   private val requestedFill = requestedCommand === TwoDGpuCommands.fillRect.U
   private val requestedCopy = requestedCommand === TwoDGpuCommands.copyArea.U
   private val requestedBlit = requestedCommand === TwoDGpuCommands.imageBlit1.U
-  private val requestedScale = requestedCommand === TwoDGpuCommands.yuyvScale.U
   private val requestedCommandValid =
-    requestedFill || requestedCopy || requestedBlit || requestedScale
+    requestedFill || requestedCopy || requestedBlit
 
   private val srcRight = srcX +& width
   private val dstRight = dstX +& width
@@ -266,20 +228,6 @@ class TwoDGpu extends Module {
     ((srcBottom - 1.U) * srcStrideReg) +& copySrcRowBytes
   private val glyphSrcEndAddress = srcAddressReg +&
     ((srcBottom - 1.U) * srcStrideReg) +& glyphSrcRowBytes
-  private val scaleSrcRight = srcX +& scaleSrcWidth
-  private val scaleSrcBottom = srcY +& scaleSrcHeight
-  private val scaleDstRight = dstX +& scaleDstWidth
-  private val scaleDstBottom = dstY +& scaleDstHeight
-  private val scaleSrcRowBytes = scaleSrcRight << 1
-  private val scaleDstRowBytes = scaleDstRight << 1
-  private val scaleSrcFirstAddress = srcAddressReg +&
-    (srcY * srcStrideReg) +& (srcX << 1)
-  private val scaleDstFirstAddress = dstAddressReg +&
-    (dstY * dstStrideReg) +& (dstX << 1)
-  private val scaleSrcEndAddress = srcAddressReg +&
-    ((scaleSrcBottom - 1.U) * srcStrideReg) +& scaleSrcRowBytes
-  private val scaleDstEndAddress = dstAddressReg +&
-    ((scaleDstBottom - 1.U) * dstStrideReg) +& scaleDstRowBytes
   private val addressLimit = (BigInt(1) << 32).U
   private val copySourceFirstAddress = srcAddressReg +&
     (srcY * srcStrideReg) +& (srcX << 1)
@@ -292,10 +240,6 @@ class TwoDGpu extends Module {
     srcAddressReg === dstAddressReg && srcStrideReg === dstStrideReg
   private val unsafeAliasedCopy =
     requestedCopy && !sameCopySurface && copyAddressRangesOverlap
-  private val scaleAddressRangesOverlap =
-    scaleSrcFirstAddress < scaleDstEndAddress &&
-      scaleDstFirstAddress < scaleSrcEndAddress
-
   private val requestedLegacyConfigurationValid =
     width =/= 0.U && height =/= 0.U &&
       dstStrideReg =/= 0.U && !dstAddressReg(0) && !dstStrideReg(0) &&
@@ -309,25 +253,7 @@ class TwoDGpu extends Module {
       (!requestedBlit ||
         (srcStrideReg =/= 0.U && srcRight <= 65536.U && srcBottom <= 65536.U &&
           glyphSrcRowBytes <= srcStrideReg && glyphSrcEndAddress <= addressLimit))
-  private val requestedScaleConfigurationValid =
-    scaleSrcWidth =/= 0.U && scaleSrcHeight =/= 0.U &&
-      scaleDstWidth =/= 0.U && scaleDstHeight =/= 0.U &&
-      scaleSrcWidth <= 1024.U &&
-      scaleDstWidth >= scaleSrcWidth && scaleDstHeight >= scaleSrcHeight &&
-      !srcX(0) && !scaleSrcWidth(0) && !dstX(0) && !scaleDstWidth(0) &&
-      srcStrideReg =/= 0.U && dstStrideReg =/= 0.U &&
-      !srcAddressReg(1, 0).orR && !dstAddressReg(1, 0).orR &&
-      !srcStrideReg(1, 0).orR && !dstStrideReg(1, 0).orR &&
-      scaleSrcRight <= 65536.U && scaleSrcBottom <= 65536.U &&
-      scaleDstRight <= 65536.U && scaleDstBottom <= 65536.U &&
-      scaleSrcRowBytes <= srcStrideReg && scaleDstRowBytes <= dstStrideReg &&
-      scaleSrcEndAddress <= addressLimit && scaleDstEndAddress <= addressLimit &&
-      !scaleAddressRangesOverlap
-  private val requestedConfigurationValid = Mux(
-    requestedScale,
-    requestedScaleConfigurationValid,
-    requestedLegacyConfigurationValid
-  )
+  private val requestedConfigurationValid = requestedLegacyConfigurationValid
 
   private val rectanglesOverlap =
     srcX < dstRight && dstX < srcRight && srcY < dstBottom && dstY < srcBottom
@@ -358,32 +284,18 @@ class TwoDGpu extends Module {
       busyReg := true.B
       backwardReg := copyBackward
       rowIndex := 0.U
-      when(requestedScale) {
-        sourceRowAddress := scaleSrcFirstAddress
-        destinationRowAddress := scaleDstFirstAddress
-        currentDestinationPixelAddress := scaleDstFirstAddress
-        pixelsRemaining := scaleDstWidth
-        scaleLoadAddress := scaleSrcFirstAddress(31, 0)
-        scaleLoadWordsRemaining := scaleSrcWidth >> 1
-        scaleLoadPairIndex := 0.U
-        scaleSourcePixelIndex := 0.U
-        scaleXError := 0.U
-        scaleYError := 0.U
-        state := sScaleLoadAddress
-      }.otherwise {
-        sourceRowAddress := Mux(
-          copyBackward,
-          sourceRowStart + rowEndOffset,
-          sourceRowStart
-        )
-        destinationRowAddress := Mux(
-          copyBackward,
-          destinationRowStart + rowEndOffset,
-          destinationRowStart
-        )
-        pixelsRemaining := width
-        state := sSetup
-      }
+      sourceRowAddress := Mux(
+        copyBackward,
+        sourceRowStart + rowEndOffset,
+        sourceRowStart
+      )
+      destinationRowAddress := Mux(
+        copyBackward,
+        destinationRowStart + rowEndOffset,
+        destinationRowStart
+      )
+      pixelsRemaining := width
+      state := sSetup
     }.otherwise {
       doneReg := true.B
       errorReg := true.B
@@ -400,65 +312,6 @@ class TwoDGpu extends Module {
     )
   }
 
-  private def clampToByte(value: SInt): UInt = {
-    val clamped = Wire(UInt(8.W))
-    val unsigned = value.asUInt
-
-    when(value < 0.S) {
-      clamped := 0.U
-    }.elsewhen(value > 255.S) {
-      clamped := 255.U
-    }.otherwise {
-      clamped := unsigned(7, 0)
-    }
-    clamped
-  }
-
-  private def luminanceTerm(y: UInt): SInt = {
-    val limited = Wire(SInt(32.W))
-
-    limited := Mux(y < 16.U, 0.S, y.zext - 16.S)
-    (limited << 8) + (limited << 5) + (limited << 3) + (limited << 1)
-  }
-
-  private def yuyvPixel(y: UInt, u: UInt, v: UInt): UInt = {
-    val chromaU = Wire(SInt(32.W))
-    val chromaV = Wire(SInt(32.W))
-    val redChroma = Wire(SInt(32.W))
-    val greenChroma = Wire(SInt(32.W))
-    val blueChroma = Wire(SInt(32.W))
-    val luminance = luminanceTerm(y)
-    val red = Wire(SInt(32.W))
-    val green = Wire(SInt(32.W))
-    val blue = Wire(SInt(32.W))
-    val redByte = Wire(UInt(8.W))
-    val greenByte = Wire(UInt(8.W))
-    val blueByte = Wire(UInt(8.W))
-
-    chromaU := u.zext - 128.S
-    chromaV := v.zext - 128.S
-    redChroma :=
-      (chromaV << 8) + (chromaV << 7) + (chromaV << 4) +
-        (chromaV << 3) + chromaV
-    greenChroma := -(
-      (chromaU << 6) + (chromaU << 5) + (chromaU << 2) +
-        (chromaV << 7) + (chromaV << 6) + (chromaV << 4)
-    )
-    blueChroma := (chromaU << 9) + (chromaU << 2)
-    red := (luminance + redChroma + 128.S) >> 8
-    green := (luminance + greenChroma + 128.S) >> 8
-    blue := (luminance + blueChroma + 128.S) >> 8
-    redByte := clampToByte(red)
-    greenByte := clampToByte(green)
-    blueByte := clampToByte(blue)
-    Cat(redByte(7, 3), greenByte(7, 2), blueByte(7, 3))
-  }
-
-  private val convertedYuyvPair = Cat(
-    yuyvPixel(io.axi.rdata(23, 16), io.axi.rdata(15, 8), io.axi.rdata(31, 24)),
-    yuyvPixel(io.axi.rdata(7, 0), io.axi.rdata(15, 8), io.axi.rdata(31, 24))
-  )
-
   private def completeCommand(hasError: Bool): Unit = {
     busyReg := false.B
     doneReg := true.B
@@ -469,7 +322,6 @@ class TwoDGpu extends Module {
   private val operationFill = commandReg === TwoDGpuCommands.fillRect.U
   private val operationCopy = commandReg === TwoDGpuCommands.copyArea.U
   private val operationBlit = commandReg === TwoDGpuCommands.imageBlit1.U
-  private val operationScale = commandReg === TwoDGpuCommands.yuyvScale.U
 
   private def minimum(first: UInt, second: UInt): UInt = Mux(first < second, first, second)
 
@@ -517,14 +369,6 @@ class TwoDGpu extends Module {
     Fill(2, upperPixelValid),
     Fill(2, lowerPixelValid)
   )
-  private val scaleLoadBytesToBoundary = 4096.U(13.W) -
-    Cat(0.U(1.W), scaleLoadAddress(11, 0))
-  private val scaleLoadWordsToBoundary = scaleLoadBytesToBoundary >> 2
-  private val scaleLoadBurstWords = minimum(
-    scaleLoadWordsRemaining,
-    minimum(scaleLoadWordsToBoundary, 16.U)
-  )
-
   io.axi.awid := 0.U
   io.axi.awaddr := destinationWordAddress
   io.axi.awlen := Mux(destinationWordCount === 0.U, 0.U, destinationWordCount - 1.U)
@@ -538,22 +382,14 @@ class TwoDGpu extends Module {
   io.axi.awvalid := state === sWriteAddress
 
   io.axi.wdata := Mux(
-    operationScale,
-    scaleWriteBuffer(writeBeatIndex),
-    Mux(
-      operationCopy,
-      copyWriteData,
-      Fill(2, Mux(operationFill, foregroundReg(15, 0), pixelData))
-    )
+    operationCopy,
+    copyWriteData,
+    Fill(2, Mux(operationFill, foregroundReg(15, 0), pixelData))
   )
   io.axi.wstrb := Mux(
-    operationScale,
-    "b1111".U,
-    Mux(
-      operationBlit,
-      Mux(destinationHalfOffset, "b1100".U, "b0011".U),
-      burstWriteStrobe
-    )
+    operationBlit,
+    Mux(destinationHalfOffset, "b1100".U, "b0011".U),
+    burstWriteStrobe
   )
   io.axi.wlast := writeBeatIndex === destinationWordCount - 1.U
   io.axi.wvalid := state === sWriteData
@@ -561,12 +397,8 @@ class TwoDGpu extends Module {
   io.axi.bready := state === sWriteResponse
 
   io.axi.arid := 0.U
-  io.axi.araddr := Mux(operationScale, scaleLoadAddress, sourceWordAddress)
-  io.axi.arlen := Mux(
-    operationScale,
-    Mux(scaleLoadBurstWords === 0.U, 0.U, scaleLoadBurstWords - 1.U),
-    Mux(sourceWordCount === 0.U, 0.U, sourceWordCount - 1.U)
-  )
+  io.axi.araddr := sourceWordAddress
+  io.axi.arlen := Mux(sourceWordCount === 0.U, 0.U, sourceWordCount - 1.U)
   io.axi.arsize := 2.U
   io.axi.arburst := 1.U
   io.axi.arlock := 0.U
@@ -574,9 +406,9 @@ class TwoDGpu extends Module {
   io.axi.arprot := 0.U
   io.axi.arqos := 0.U
   io.axi.arregion := 0.U
-  io.axi.arvalid := state === sReadAddress || state === sScaleLoadAddress
+  io.axi.arvalid := state === sReadAddress
 
-  io.axi.rready := state === sReadData || state === sScaleLoadData
+  io.axi.rready := state === sReadData
 
   when(state === sSetup) {
     currentSourcePixelAddress := sourceRowAddress
@@ -649,82 +481,6 @@ class TwoDGpu extends Module {
       readErrorSeen := false.B
       state := sReadAddress
     }
-  }.elsewhen(state === sScaleLoadAddress) {
-    when(io.axi.arvalid && io.axi.arready) {
-      sourceWordCount := scaleLoadBurstWords
-      readBeatIndex := 0.U
-      readErrorSeen := false.B
-      state := sScaleLoadData
-    }
-  }.elsewhen(state === sScaleLoadData) {
-    when(io.axi.rvalid && io.axi.rready) {
-      val expectedLast = readBeatIndex === sourceWordCount - 1.U
-      val beatError = io.axi.rresp =/= 0.U || io.axi.rid =/= 0.U ||
-        io.axi.rlast =/= expectedLast
-      val commandReadError = readErrorSeen || beatError
-      val writeIndex = scaleLoadPairIndex + readBeatIndex
-
-      readErrorSeen := commandReadError
-      scaleLineBuffer.write(writeIndex(8, 0), convertedYuyvPair)
-      when(io.axi.rlast) {
-        when(commandReadError) {
-          completeCommand(true.B)
-        }.elsewhen(scaleLoadWordsRemaining === sourceWordCount) {
-          scaleSourcePixelIndex := 0.U
-          scaleXError := 0.U
-          state := sScaleChunkPrepare
-        }.otherwise {
-          scaleLoadAddress := scaleLoadAddress + (sourceWordCount << 2)
-          scaleLoadWordsRemaining := scaleLoadWordsRemaining - sourceWordCount
-          scaleLoadPairIndex := scaleLoadPairIndex + sourceWordCount
-          state := sScaleLoadAddress
-        }
-      }.otherwise {
-        readBeatIndex := readBeatIndex + 1.U
-      }
-    }
-  }.elsewhen(state === sScaleChunkPrepare) {
-    val destinationCapacity = forwardPixelCapacity(currentDestinationPixelAddress, 32)
-    val selectedPixels = minimum(pixelsRemaining, destinationCapacity)
-
-    chunkPixelCount := selectedPixels
-    destinationWordAddress := currentDestinationPixelAddress(31, 0)
-    destinationWordCount := selectedPixels >> 1
-    destinationHalfOffset := false.B
-    scalePreparePixelIndex := 0.U
-    state := sScalePixelRead
-  }.elsewhen(state === sScalePixelRead) {
-    state := sScalePixelStore
-  }.elsewhen(state === sScalePixelStore) {
-    val selectedPixel = Mux(
-      scaleSourcePixelIndex(0),
-      scaleLineReadData(31, 16),
-      scaleLineReadData(15, 0)
-    )
-    val bufferIndex = scalePreparePixelIndex(4, 1)
-    val nextXError = scaleXError +& scaleSrcWidth
-
-    when(scalePreparePixelIndex(0)) {
-      scaleWriteBuffer(bufferIndex) := Cat(
-        selectedPixel,
-        scaleWriteBuffer(bufferIndex)(15, 0)
-      )
-    }.otherwise {
-      scaleWriteBuffer(bufferIndex) := Cat(0.U(16.W), selectedPixel)
-    }
-    when(nextXError >= scaleDstWidth) {
-      scaleXError := nextXError - scaleDstWidth
-      scaleSourcePixelIndex := scaleSourcePixelIndex + 1.U
-    }.otherwise {
-      scaleXError := nextXError
-    }
-    when(scalePreparePixelIndex === chunkPixelCount - 1.U) {
-      writeBeatIndex := 0.U
-      state := sWriteAddress
-    }.otherwise {
-      scalePreparePixelIndex := scalePreparePixelIndex + 1.U
-      state := sScalePixelRead
-    }
   }.elsewhen(state === sReadAddress) {
     when(io.axi.arvalid && io.axi.arready) {
       state := sReadData
@@ -773,44 +529,7 @@ class TwoDGpu extends Module {
       when(io.axi.bresp =/= 0.U || io.axi.bid =/= 0.U) {
         completeCommand(true.B)
       }.otherwise {
-        when(operationScale) {
-          val rowComplete = pixelsRemaining === chunkPixelCount
-          val commandComplete = rowComplete && rowIndex === scaleDstHeight - 1.U
-
-          when(commandComplete) {
-            completeCommand(false.B)
-          }.elsewhen(rowComplete) {
-            val nextSourceRowAddress = sourceRowAddress + srcStrideReg
-            val nextDestinationRowAddress = destinationRowAddress + dstStrideReg
-            val nextYError = scaleYError +& scaleSrcHeight
-            val advanceSource = nextYError >= scaleDstHeight
-
-            rowIndex := rowIndex + 1.U
-            pixelsRemaining := scaleDstWidth
-            destinationRowAddress := nextDestinationRowAddress
-            currentDestinationPixelAddress := nextDestinationRowAddress
-            scaleSourcePixelIndex := 0.U
-            scaleXError := 0.U
-            when(advanceSource) {
-              sourceRowAddress := nextSourceRowAddress
-              scaleLoadAddress := nextSourceRowAddress(31, 0)
-              scaleLoadWordsRemaining := scaleSrcWidth >> 1
-              scaleLoadPairIndex := 0.U
-              scaleYError := nextYError - scaleDstHeight
-              state := sScaleLoadAddress
-            }.otherwise {
-              scaleYError := nextYError
-              state := sScaleChunkPrepare
-            }
-          }.otherwise {
-            val chunkBytes = chunkPixelCount << 1
-
-            pixelsRemaining := pixelsRemaining - chunkPixelCount
-            currentDestinationPixelAddress :=
-              currentDestinationPixelAddress + chunkBytes
-            state := sScaleChunkPrepare
-          }
-        }.elsewhen(operationBlit) {
+        when(operationBlit) {
           val rowComplete = pixelsRemaining === 1.U
           val commandComplete = rowComplete && rowIndex === height - 1.U
 
