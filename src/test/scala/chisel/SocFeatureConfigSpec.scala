@@ -53,6 +53,7 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
       "CameraCapture cameraCapture",
       "I2cMaster cameraI2cMaster"
     ).foreach(instance => assert(fullSystemVerilog.contains(instance)))
+    assert(!fullSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
   }
 
   "minimal profile should omit optional peripherals and retain confreg GPIO" in {
@@ -72,6 +73,9 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
     assert(!retirePcDebugSystemVerilog.contains("HexSevenSegmentDisplay retirePcDisplay"))
     assert(retirePcDebugSystemVerilog.contains("Axi3ErrorSlave sdioError"))
     assert(SocFeatureConfig.minimal === SocFeatureConfig.retirePcDebug)
+    assert(SocFeatureConfig.retirePcDebug.retirePc)
+    assert(!SocFeatureConfig.full.retirePc)
+    assert(retirePcDebugSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
   }
 
   "LiteSD profile should retain SDIO and omit TensorCore" in {

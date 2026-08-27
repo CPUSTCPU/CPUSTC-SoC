@@ -10,6 +10,9 @@ class RawCoreTop extends ExtModule {
   val aclk:    Clock = IO(Input(Clock()))
   val aresetn: Bool  = IO(Input(Bool()))
   val intrpt:  UInt  = IO(Input(UInt(8.W)))
+  val break_point: Bool = IO(Input(Bool()))
+  val infor_flag: Bool = IO(Input(Bool()))
+  val reg_num: UInt = IO(Input(UInt(5.W)))
 
   val arid:    UInt = IO(Output(UInt(4.W)))
   val araddr:  UInt = IO(Output(UInt(32.W)))
@@ -27,6 +30,13 @@ class RawCoreTop extends ExtModule {
   val rlast:   Bool = IO(Input(Bool()))
   val rvalid:  Bool = IO(Input(Bool()))
   val rready:  Bool = IO(Output(Bool()))
+  val ws_valid: Bool = IO(Output(Bool()))
+  val rf_rdata: UInt = IO(Output(UInt(32.W)))
+  val debug0_wb_pc: UInt = IO(Output(UInt(32.W)))
+  val debug0_wb_rf_wen: UInt = IO(Output(UInt(4.W)))
+  val debug0_wb_rf_wnum: UInt = IO(Output(UInt(5.W)))
+  val debug0_wb_rf_wdata: UInt = IO(Output(UInt(32.W)))
+  val debug0_wb_inst: UInt = IO(Output(UInt(32.W)))
 
   val awid:    UInt = IO(Output(UInt(4.W)))
   val awaddr:  UInt = IO(Output(UInt(32.W)))
@@ -54,6 +64,11 @@ class CoreTopIO extends Bundle {
   val aclk:    Clock  = Input(Clock())
   val aresetn: Bool   = Input(Bool())
   val intrpt:  UInt   = Input(UInt(8.W))
+  val debug0_wb_pc: UInt = Output(UInt(32.W))
+  val debug0_wb_rf_wen: UInt = Output(UInt(4.W))
+  val debug0_wb_rf_wnum: UInt = Output(UInt(5.W))
+  val debug0_wb_rf_wdata: UInt = Output(UInt(32.W))
+  val debug0_wb_inst: UInt = Output(UInt(32.W))
   val axi:     AXI3IO = new AXI3IO
 }
 
@@ -66,6 +81,14 @@ class CoreTop extends RawModule {
   raw.aclk    := io.aclk
   raw.aresetn := io.aresetn
   raw.intrpt  := io.intrpt
+  raw.break_point := false.B
+  raw.infor_flag := false.B
+  raw.reg_num := 0.U
+  io.debug0_wb_pc := raw.debug0_wb_pc
+  io.debug0_wb_rf_wen := raw.debug0_wb_rf_wen
+  io.debug0_wb_rf_wnum := raw.debug0_wb_rf_wnum
+  io.debug0_wb_rf_wdata := raw.debug0_wb_rf_wdata
+  io.debug0_wb_inst := raw.debug0_wb_inst
 
   io.axi.awid    := raw.awid
   io.axi.awaddr  := raw.awaddr

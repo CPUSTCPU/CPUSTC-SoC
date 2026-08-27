@@ -54,6 +54,17 @@ REQUIRED_CONNECTIONS = (
     ("io_axi_b_id", "input", "bid"),
 )
 
+# Optional CPUSTCore observation ports mapped to the legacy SoC debug boundary.
+DEBUG_PORTS = {
+    "io_retirePc": ("retire_pc", "[31:0]"),
+    "io_cmt_0_valid": ("cmt0_valid", ""),
+    "io_cmt_0_pc": ("cmt0_pc", "[31:0]"),
+    "io_cmt_0_data": ("cmt0_data", "[31:0]"),
+    "io_cmt_0_inst": ("cmt0_inst", "[31:0]"),
+    "io_cmt_0_rd_valid": ("cmt0_rd_valid", ""),
+    "io_cmt_0_rd": ("cmt0_rd", "[4:0]"),
+}
+
 
 ADAPTER_HEADER = """`default_nettype none
 
@@ -99,7 +110,17 @@ module core_top (
     input  wire [3:0]  bid,
     input  wire [1:0]  bresp,
     input  wire        bvalid,
-    output wire        bready
+    output wire        bready,
+    input  wire        break_point,
+    input  wire        infor_flag,
+    input  wire [4:0]  reg_num,
+    output wire        ws_valid,
+    output wire [31:0] rf_rdata,
+    output wire [31:0] debug0_wb_pc,
+    output wire [3:0]  debug0_wb_rf_wen,
+    output wire [4:0]  debug0_wb_rf_wnum,
+    output wire [31:0] debug0_wb_rf_wdata,
+    output wire [31:0] debug0_wb_inst
 );
 """
 
@@ -164,12 +185,68 @@ def validate_required_ports(ports: dict[str, Port]) -> None:
         raise ValueError("\n".join(errors))
 
 
+def validate_optional_inputs(ports: dict[str, Port]) -> None:
+    required = {item[0] for item in REQUIRED_CONNECTIONS}
+    unsupported = [
+        name for name, port in ports.items()
+        if port.direction in ("input", "inout")
+        and name not in required
+        and name not in {"clock", "reset"}
+    ]
+    if unsupported:
+        raise ValueError(
+            "unsupported optional CPU input ports: " + ", ".join(sorted(unsupported))
+        )
+
+
+def validate_debug_ports(ports: dict[str, Port]) -> None:
+    errors = [
+        f"CPU debug port {name} is {ports[name].direction}, expected output"
+        for name in DEBUG_PORTS
+        if name in ports and ports[name].direction != "output"
+    ]
+    if errors:
+        raise ValueError("\n".join(errors))
+
+
 def render_adapter(ports: dict[str, Port]) -> str:
     validate_required_ports(ports)
+    validate_optional_inputs(ports)
+    validate_debug_ports(ports)
     connections = [
         f"        .{name:<24}({signal})"
         for name, _, signal in REQUIRED_CONNECTIONS
     ]
+    connected = {name for name in DEBUG_PORTS if name in ports}
+    connections.extend(
+        f"        .{name:<24}({signal})"
+        for name, (signal, _) in DEBUG_PORTS.items()
+        if name in connected
+    )
+    required = {item[0] for item in REQUIRED_CONNECTIONS}
+    connections.extend(
+        f"        .{name:<24}()"
+        for name, port in ports.items()
+        if port.direction == "output" and name not in required and name not in connected
+    )
+    declarations = [
+        f"    wire {width + ' ' if width else ''}{signal};"
+        for name, (signal, width) in DEBUG_PORTS.items()
+        if name in connected
+    ]
+    retire_pc = (
+        "retire_pc" if "io_retirePc" in connected
+        else "cmt0_pc" if "io_cmt_0_pc" in connected
+        else "32'b0"
+    )
+    rf_wen = (
+        "{4{cmt0_valid && cmt0_rd_valid}}"
+        if {"io_cmt_0_valid", "io_cmt_0_rd_valid"} <= connected
+        else "4'b0"
+    )
+    rf_wnum = "cmt0_rd" if "io_cmt_0_rd" in connected else "5'b0"
+    rf_wdata = "cmt0_data" if "io_cmt_0_data" in connected else "32'b0"
+    wb_inst = "cmt0_inst" if "io_cmt_0_inst" in connected else "32'b0"
     return "\n".join(
         (
             ADAPTER_HEADER.rstrip(),
@@ -177,6 +254,7 @@ def render_adapter(ports: dict[str, Port]) -> str:
             "    wire [3:0] cpu_awid;",
             "    wire [7:0] cpu_arlen;",
             "    wire [7:0] cpu_awlen;",
+            *declarations,
             "    reg  [3:0] write_id;",
             "",
             "    always @(posedge aclk) begin",
@@ -197,6 +275,13 @@ def render_adapter(ports: dict[str, Port]) -> str:
             "    assign wid     = (awvalid && awready) ? cpu_awid : write_id;",
             "    assign arlen   = cpu_arlen[3:0];",
             "    assign awlen   = cpu_awlen[3:0];",
+            "    assign ws_valid = 1'b0;",
+            "    assign rf_rdata = 32'b0;",
+            f"    assign debug0_wb_pc       = {retire_pc};",
+            f"    assign debug0_wb_rf_wen   = {rf_wen};",
+            f"    assign debug0_wb_rf_wnum  = {rf_wnum};",
+            f"    assign debug0_wb_rf_wdata = {rf_wdata};",
+            f"    assign debug0_wb_inst     = {wb_inst};",
             "",
             "    CPU u_cpustcore (",
             ",\n".join(connections),
@@ -261,13 +346,13 @@ def main() -> int:
                 )
             )
             return 1
-        print(f"adapter is current: required={len(REQUIRED_CONNECTIONS)} debug=0")
+        print(f"adapter is current: required={len(REQUIRED_CONNECTIONS)} debug=auto")
         return 0
 
     changed = write_if_changed(args.output, generated)
     print(
         f"{'generated' if changed else 'unchanged'} {args.output}: "
-        f"required={len(REQUIRED_CONNECTIONS)} debug=0"
+        f"required={len(REQUIRED_CONNECTIONS)} debug=auto"
     )
     return 0
 

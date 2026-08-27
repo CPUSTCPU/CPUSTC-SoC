@@ -32,24 +32,40 @@ class AdapterGeneratorTest(unittest.TestCase):
         self.assertEqual(ports["reset"].direction, "input")
         self.assertEqual(ports["value"].direction, "output")
 
-    def test_wrapper_has_no_debug_interface(self):
+    def test_wrapper_keeps_compat_debug_interface_without_cpu_debug(self):
         ports = GENERATOR.parse_cpu_ports(self.cpu_source())
         output = GENERATOR.render_adapter(ports)
-        self.assertNotIn("debug", output)
+        self.assertIn("debug0_wb_pc", output)
+        self.assertIn("assign debug0_wb_pc       = 32'b0;", output)
 
-    def test_present_debug_ports_are_not_connected(self):
+    def test_present_debug_ports_are_connected(self):
         ports = GENERATOR.parse_cpu_ports(
-            self.cpu_source(("io_cmt_0_valid", "io_cmt_0_pc"))
+            self.cpu_source(("io_cmt_0_valid", "io_cmt_0_pc", "io_cmt_0_data",
+                             "io_cmt_0_inst", "io_cmt_0_rd_valid", "io_cmt_0_rd"))
         )
         output = GENERATOR.render_adapter(ports)
-        self.assertNotIn(".io_cmt_0_valid", output)
-        self.assertNotIn(".io_cmt_0_pc", output)
+        self.assertIn(".io_cmt_0_valid", output)
+        self.assertIn(".io_cmt_0_pc", output)
+        self.assertIn("assign debug0_wb_pc       = cmt0_pc;", output)
+        self.assertIn("assign debug0_wb_rf_wen   = {4{cmt0_valid && cmt0_rd_valid}};", output)
+
+    def test_retire_pc_takes_precedence_over_commit_pc(self):
+        ports = GENERATOR.parse_cpu_ports(self.cpu_source(("io_retirePc", "io_cmt_0_pc")))
+        output = GENERATOR.render_adapter(ports)
+        self.assertIn(".io_retirePc", output)
+        self.assertIn("assign debug0_wb_pc       = retire_pc;", output)
 
     def test_missing_axi_port_is_rejected(self):
         ports = GENERATOR.parse_cpu_ports(self.cpu_source())
         del ports["io_axi_aw_id"]
         with self.assertRaisesRegex(ValueError, "missing required CPU port io_axi_aw_id"):
             GENERATOR.validate_required_ports(ports)
+
+    def test_optional_cpu_input_is_rejected(self):
+        ports = GENERATOR.parse_cpu_ports(self.cpu_source())
+        ports["break_point"] = GENERATOR.Port("input", "break_point")
+        with self.assertRaisesRegex(ValueError, "unsupported optional CPU input"):
+            GENERATOR.render_adapter(ports)
 
 
 if __name__ == "__main__":

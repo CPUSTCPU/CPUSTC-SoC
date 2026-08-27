@@ -16,7 +16,8 @@ final case class SocFeatureConfig(
   twoDGpu: Boolean,
   tensorCore: Boolean,
   dotMatrix: Boolean,
-  camera: Boolean
+  camera: Boolean,
+  retirePc: Boolean = false
 ) {
   require(!lcdTouch || lcd, "LCD touch requires the LCD controller")
 
@@ -36,7 +37,8 @@ object SocFeatureConfig {
     twoDGpu = true,
     tensorCore = true,
     dotMatrix = true,
-    camera = true
+    camera = true,
+    retirePc = true
   )
 
   /** LiteSD 对照工程配置：保留全外设配置，但关闭 TensorCore。 */
@@ -60,7 +62,8 @@ object SocFeatureConfig {
     twoDGpu = false,
     tensorCore = false,
     dotMatrix = false,
-    camera = false
+    camera = false,
+    retirePc = true
   )
 
   /** 无可选外设配置的兼容名称。 */

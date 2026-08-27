@@ -443,7 +443,12 @@ class CPUSTCSoc(
     val readAddressDisplay = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
         Module(new HexSevenSegmentDisplay(clockHz = 50_000_000))
     }
-    readAddressDisplay.io.value := readAddress
+    val debugDisplayValue = if (features.retirePc) {
+        coreTop.io.debug0_wb_pc
+    } else {
+        readAddress
+    }
+    readAddressDisplay.io.value := debugDisplayValue
     io.gpio.num_csn := Mux(monitorEnable, readAddressDisplay.io.csn, confreg0.io.gpio.num_csn)
     io.gpio.num_a_g := Mux(monitorEnable, readAddressDisplay.io.aG, confreg0.io.gpio.num_a_g)
     confreg0.io.gpio.switch := io.gpio.switch
