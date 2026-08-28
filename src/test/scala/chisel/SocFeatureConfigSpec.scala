@@ -96,11 +96,14 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
     assert(!sdioLiteSdSystemVerilog.contains("ila_sdio_axi_source"))
   }
 
-  "USB ILA debug profile should instantiate the current UTMI probes" in {
+  "USB ILA debug profile should instantiate the UTMI pre-SETUP diagnostics" in {
     assert(SocFeatureConfig.usbIlaDebug.usb)
     assert(SocFeatureConfig.usbIlaDebug.usbIla)
     assert(usbIlaDebugSystemVerilog.contains("ila_usb_utmi_eop ila"))
+    assert(usbIlaDebugSystemVerilog.contains("UsbPreSetupDebugMonitor monitor"))
+    assert(usbIlaDebugSystemVerilog.contains(".probe43"))
     assert(!fullSystemVerilog.contains("ila_usb_utmi_eop"))
+    assert(!fullSystemVerilog.contains("UsbPreSetupDebugMonitor"))
   }
 
   "all profiles should expose identical top-level ports" in {

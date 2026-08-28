@@ -31,6 +31,8 @@ case class UsbOhciAxi4Apb3Utmi(
     val ctrl = slave(Apb3(ctrlParameter))
     val interrupt = out Bool()
     val utmi = master(Usb3500UtmiIo())
+    val debugRxEventOverflow = out Bool()
+    val debugRxEventCollision = out Bool()
     val debug = out(
       UsbHubLsFsToUtmiDebug(
         waitCounterWidth = log2Up(utmiTiming.txEopTimeoutCycles),
@@ -120,6 +122,8 @@ case class UsbOhciAxi4Apb3Utmi(
   val cc = UsbHubLsFsCtrlCc(p.portCount, frontCd, backCdPatched)
   cc.input <> front.ohci.io.phy
   cc.output <> back.adapter.io.ctrl
+  io.debugRxEventOverflow := cc.rxEventOverflow
+  io.debugRxEventCollision := cc.rxEventCollision
 
   val clockSofDiagnostic = withClockSofDiagnostic generate new Area {
     val core = UsbClockSofDiagnostic(

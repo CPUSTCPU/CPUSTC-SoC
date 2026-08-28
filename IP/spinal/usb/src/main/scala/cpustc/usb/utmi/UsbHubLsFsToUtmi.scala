@@ -82,6 +82,9 @@ case class UsbHubLsFsToUtmiDebug(
   val txWaitCounter: Bits = Bits(waitCounterWidth bits)
   val txIpdCounter: Bits = Bits(ipdCounterWidth bits)
   val portLowSpeed: Bool = Bool()
+  val portState: Bits = Bits(4 bits)
+  val portConnectPulse: Bool = Bool()
+  val portDisconnectPulse: Bool = Bool()
   val portResetActive: Bool = Bool()
   val debugSampleTick: Bool = Bool()
   val chirpCandidate: Bits = Bits(2 bits)
@@ -600,6 +603,9 @@ case class UsbHubLsFsToUtmi(
   io.debug.txWaitCounter := txWaitCounter.asBits
   io.debug.txIpdCounter := txIpdCounter.asBits
   io.debug.portLowSpeed := portLowSpeed
+  io.debug.portState := state.asBits.resized
+  io.debug.portConnectPulse := port.connect
+  io.debug.portDisconnectPulse := port.disconnect
   io.debug.portResetActive := state === PortState.Resetting
   io.debug.debugSampleTick := debugSampleDivider.willOverflow
   io.debug.chirpCandidate := chirpCandidate
