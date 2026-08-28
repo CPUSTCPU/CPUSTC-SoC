@@ -36,6 +36,7 @@ IP/myCPU/*
 *.backup.jou
 *.backup.log
 ip_upgrade.log
+fpga/xc7a200t/CPUSTC-SoC/reports/
 
 # Vivado generated IP products. Keep source-level IP config files (*.xci,
 # *.xcix, *.prj, component.xml) under version control.
