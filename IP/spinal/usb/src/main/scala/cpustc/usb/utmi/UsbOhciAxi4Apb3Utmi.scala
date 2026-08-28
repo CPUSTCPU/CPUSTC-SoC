@@ -76,6 +76,13 @@ case class UsbOhciAxi4Apb3Utmi(
     val ohci = UsbOhci(p, ctrlBridge.io.bmb.p)
     ohci.io.ctrl <> ctrlBridge.io.bmb
     ohci.io.interrupt <> io.interrupt
+
+    // OpenHCI: disconnecting an enabled port clears PES and raises PESC/RHSC.
+    ohci.rework {
+      for ((status, port) <- (ohci.reg.hcRhPortStatus, ohci.io.phy.ports).zipped) {
+        status.PESC.set setWhen (port.disconnect && status.PES)
+      }
+    }
   }
 
   val dma = dmaCd on new Area {

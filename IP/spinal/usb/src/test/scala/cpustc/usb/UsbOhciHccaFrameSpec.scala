@@ -238,8 +238,12 @@ class UsbOhciHccaFrameSpec extends AnyFunSuite {
 
       var disconnectOnNextSof = false
       var disconnectAtSofSeen = false
+      var txMonitorEnabled = false
 
       fork {
+        while (!txMonitorEnabled) {
+          dut.backCd.waitSampling()
+        }
         while (!disconnectAtSofSeen) {
           while (!dut.io.utmi.txValid.toBoolean) {
             dut.backCd.waitSampling()
@@ -308,6 +312,7 @@ class UsbOhciHccaFrameSpec extends AnyFunSuite {
       apb.write(hcRhStatus, 1 << 16)
       utmi.connectLowSpeed()
       utmi.waitCycles(timing.attachDebounceCycles + 4)
+      txMonitorEnabled = true
       apb.write(hcControl, (BigInt(2) << 6) | operationalScheduleControl)
       dut.frontCd.waitSampling(12)
       apb.write(hcRhPortStatus, setPortReset)
