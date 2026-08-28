@@ -115,3 +115,6 @@ docs/debug/**/log/
 .agent-artifacts/
 .agent-build/
 __pycache__/
+
+# local agents
+AGENTS.md
