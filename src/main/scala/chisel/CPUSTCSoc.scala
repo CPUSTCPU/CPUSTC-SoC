@@ -388,7 +388,7 @@ class CPUSTCSoc(
     )
 
     val usbOhciAxi4Apb3Utmi = if (features.usb) {
-        val controller = Module(new UsbOhciAxi4Apb3Utmi)
+        val controller = Module(new UsbOhciAxi4Apb3Utmi(withUsbIla = features.usbIla))
         controller.io.utmiClock := io.usbPhyClk
         controller.io.utmiReset := !ResetnSync(io.usbPhyClk, io.resetn, 2)
         controller.io.ctrlClock := aClk

@@ -17,9 +17,11 @@ final case class SocFeatureConfig(
   tensorCore: Boolean,
   dotMatrix: Boolean,
   camera: Boolean,
-  retirePc: Boolean = false
+  retirePc: Boolean = false,
+  usbIla: Boolean = false
 ) {
   require(!lcdTouch || lcd, "LCD touch requires the LCD controller")
+  require(!usbIla || usb, "USB ILA requires USB support")
 
   /** 显示 APB 页内至少存在一个从设备。 */
   val hasDisplayPeripheral: Boolean = vga || twoDGpu || tensorCore || dotMatrix
@@ -43,6 +45,9 @@ object SocFeatureConfig {
 
   /** LiteSD 对照工程配置：保留全外设配置，但关闭 TensorCore。 */
   val sdioLiteSd: SocFeatureConfig = full.copy(tensorCore = false)
+
+  /** 全外设 USB 调试配置：保留当前 RTL，并启用 UTMI ILA。 */
+  val usbIlaDebug: SocFeatureConfig = full.copy(usbIla = true)
 
   /** 全外设配置裁剪 SDIO、Camera 和 TensorCore。 */
   val fullWithoutSdioCameraTensorCore: SocFeatureConfig = full.copy(

@@ -19,14 +19,14 @@
 # 编译 Chisel SoC
 sbt compile
 
-# 生成当前 full profile 的 SystemVerilog
+# 生成当前 usbIlaDebug profile 的 SystemVerilog
 sbt run
 
 # 运行根工程测试
 sbt test
 ```
 
-默认入口 `src/main/scala/main/main.scala` 使用 `SocFeatureConfig.full`，输出为：
+默认入口 `src/main/scala/main/main.scala` 使用 `SocFeatureConfig.usbIlaDebug`，输出为：
 
 ```text
 generated/xc7a200t/CPUSTCSoc.sv

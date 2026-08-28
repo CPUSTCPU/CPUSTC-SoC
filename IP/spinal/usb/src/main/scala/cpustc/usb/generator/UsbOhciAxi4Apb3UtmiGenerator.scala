@@ -43,7 +43,6 @@ object UsbOhciAxi4Apb3UtmiGenerator extends App {
       ctrlCd,
       utmiCd,
       dmaCd,
-      withTxEopIla = false,
       withClockSofDiagnostic = false,
       resetChirpDiagnostic = true
     )

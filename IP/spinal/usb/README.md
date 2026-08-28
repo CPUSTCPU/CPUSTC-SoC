@@ -67,7 +67,7 @@ UTMI 适配器测试只例化一个 `UsbHubLsFsToUtmi` DUT，并在 test scope �
 
 固定板级参数的 OHCI Host 生成入口位于 `src/main/scala/cpustc/usb/generator/`，输出到 `../../../generated/xc7a200t/spinal/usb/`。生成后的 Verilog 顶层由 Chisel `ExtModule` 声明端口，SpinalHDL Scala 源码不加入 Chisel SBT 工程。
 
-OHCI 控制寄存器经 32 位 APB3 接入 CPU 地址 `0x1fe02000`，AXI4 DMA master 接入 DDR interconnect `s4`，中断接入 HWI5。Chisel 顶层已连接 OHCI 的 APB3、AXI4 DMA、UTMI+、时钟和 active-high 复位；板级 `soc_top.v` 已连接 USB3500 DATA IOBUF、UTMI+控制信号和硬件复位，USB3500 PHY 通过 CLKOUT 向 FPGA 提供 60 MHz UTMI 时钟。USB 功能逻辑已经通过 `sbt compile`、`sbt run`、Vivado 实现和历史 ILA 上板捕获；当前生产生成入口关闭 USB ILA，为 CPU/Cache 调试释放资源。
+OHCI 控制寄存器经 32 位 APB3 接入 CPU 地址 `0x1fe02000`，AXI4 DMA master 接入 DDR interconnect `s4`，中断接入 HWI5。Chisel 顶层已连接 OHCI 的 APB3、AXI4 DMA、UTMI+、时钟和 active-high 复位；板级 `soc_top.v` 已连接 USB3500 DATA IOBUF、UTMI+控制信号和硬件复位，USB3500 PHY 通过 CLKOUT 向 FPGA 提供 60 MHz UTMI 时钟。USB 功能逻辑已经通过 `sbt compile`、`sbt run`、Vivado 实现和历史 ILA 上板捕获；`SocFeatureConfig.usbIla` 控制当前 27 路 UTMI ILA，且仅允许在 USB 开启时使用。
 
 根工程 `SocFeatureConfig.usb` 控制 OHCI wrapper 是否进入 SoC 生成 RTL。关闭时 APB 页立即返回错误、DDR interconnect `s4` 保持 idle、HWI5 固定为 `0`，UTMI 输出进入安全状态；板级端口和 Vivado file set 保持不变，SpinalHDL 生成文件仍需存在。
 
@@ -80,7 +80,7 @@ SoC 顶层的 `switch[7]` 已用于 CPU 退休 PC 调试，不再统计或显示
 
 - `src/main/scala/cpustc/usb/utmi/UsbHubLsFsToUtmi.scala`：单端口 `UsbHubLsFs.Ctrl` 到 USB3500 UTMI+的适配器，处理字节流收发、LS/FS连接与断连过滤、端口复位、挂起和带低速 EOP 的恢复。
 - `src/main/scala/cpustc/usb/utmi/UsbOhciAxi4Apb3Utmi.scala`：组合 APB3控制、OHCI核心、独立DMA时钟域、AXI4 DMA和UTMI适配器，并声明可选的 `ila_usb_utmi_eop` 黑盒。
-- `src/main/scala/cpustc/usb/generator/UsbOhciAxi4Apb3UtmiGenerator.scala`：固定生成单端口、32-bit DMA、2048-byte FIFO且不例化 USB ILA 的 `UsbOhciAxi4Apb3Utmi`；可选 ILA 类仅保留用于独立 USB 调试候选。
+- `src/main/scala/cpustc/usb/generator/UsbOhciAxi4Apb3UtmiGenerator.scala`：固定生成单端口、32-bit DMA、2048-byte FIFO的 `UsbOhciAxi4Apb3Utmi`，并导出 UTMI 调试信号；是否例化 ILA 由 SoC debug 参数决定。
 
 当前实现固定 `DPPD/DMPD=1`、`overcurrent=False`，只支持OHCI LS/FS。USB3500硬件RESET和DATA IOBUF由板级顶层处理；`utmi_reset`是同步到60 MHz域的 active-high 内部逻辑复位。第一阶段保持 `SUSPENDN=1`，维持USB3500 CLKOUT运行，不进入PHY低功耗停钟状态。
 
@@ -94,7 +94,7 @@ SETUP/OUT 使用两包事务前瞻：适配器将 token 和后续 DATA0/DATA1 �
 
 全速根端口访问 Hub 下挂低速设备时，适配器在包首将 `ctrl.lowSpeed` 锁存到 TX bank，并要求配对 token 与 DATA 速度一致；物理发送和接收阶段选择 USB3500 `XCVRSEL=11`，由 PHY 发送 PRE、保持全速段 J/K 极性并以低速位周期传输目标包。模式只在 `TXVALID=0`、`RXACTIVE=0` 且物理 EOP/IPD 已完成时切换，IPD 按已发送事务选择 LS 80 拍或 FS 10 拍，随后可恢复 `XCVRSEL=01` 的全速流量。
 
-`UsbClockSofDiagnostic` 仅观测 USB 数据通路：60 MHz 域产生 `/256` 心跳和 Gray 累计计数，33 MHz 域独立测量心跳间隔、Reset 时长、Reset 到首个 SOF、SOF 间隔和 SETUP 时间戳；独立 USB 调试候选启用时可由 `ila_usb_clock_sof_diag` 保存。`portResetActive` 先在源域寄存再进入 `BufferCC`，诊断逻辑不向 USB 控制或数据路径反馈；定向仿真的 3 个场景覆盖正常计数、60 MHz 心跳停止和前端复位基线校正。当前生产生成入口和权威 Vivado 工程均不包含 USB ILA IP。
+`UsbClockSofDiagnostic` 仅观测 USB 数据通路：60 MHz 域产生 `/256` 心跳和 Gray 累计计数，33 MHz 域独立测量心跳间隔、Reset 时长、Reset 到首个 SOF、SOF 间隔和 SETUP 时间戳；独立 USB 调试候选启用时可由 `ila_usb_clock_sof_diag` 保存。`portResetActive` 先在源域寄存再进入 `BufferCC`，诊断逻辑不向 USB 控制或数据路径反馈；定向仿真的 3 个场景覆盖正常计数、60 MHz 心跳停止和前端复位基线校正。`usbIlaDebug` 会在 SoC RTL 中例化 `ila_usb_utmi_eop`，当前 Vivado 工程提供端口匹配的 ILA Core Container。
 
 `Disabled/Enabled/Suspended` 共享持续 SE0 断连过滤；resume K 结束后依次保持 80 拍 SE0 和 40 拍 J，再恢复物理包发送。端口在包中途失效时停止 UTMI 驱动，同时完成 OHCI 共享 TX 的逻辑 EOP，避免 SOF 与断连重叠后帧调度停滞。`RXERROR` 即使未与 `RXVALID` 同拍也会形成错误 beat，使 OHCI 保留 bit-stuffing condition code。
 

@@ -20,6 +20,8 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
   private lazy val fullSystemVerilog = elaborate("full", SocFeatureConfig.full)
   private lazy val sdioLiteSdSystemVerilog =
     elaborate("sdio-litesd", SocFeatureConfig.sdioLiteSd)
+  private lazy val usbIlaDebugSystemVerilog =
+    elaborate("usb-ila-debug", SocFeatureConfig.usbIlaDebug)
   private lazy val retirePcDebugSystemVerilog =
     elaborate("retire-pc-debug", SocFeatureConfig.retirePcDebug)
 
@@ -53,7 +55,7 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
       "CameraCapture cameraCapture",
       "I2cMaster cameraI2cMaster"
     ).foreach(instance => assert(fullSystemVerilog.contains(instance)))
-    assert(!fullSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
+    assert(fullSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
   }
 
   "minimal profile should omit optional peripherals and retain confreg GPIO" in {
@@ -74,7 +76,7 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
     assert(retirePcDebugSystemVerilog.contains("Axi3ErrorSlave sdioError"))
     assert(SocFeatureConfig.minimal === SocFeatureConfig.retirePcDebug)
     assert(SocFeatureConfig.retirePcDebug.retirePc)
-    assert(!SocFeatureConfig.full.retirePc)
+    assert(SocFeatureConfig.full.retirePc)
     assert(retirePcDebugSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
   }
 
@@ -94,6 +96,13 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
     assert(!sdioLiteSdSystemVerilog.contains("ila_sdio_axi_source"))
   }
 
+  "USB ILA debug profile should instantiate the current UTMI probes" in {
+    assert(SocFeatureConfig.usbIlaDebug.usb)
+    assert(SocFeatureConfig.usbIlaDebug.usbIla)
+    assert(usbIlaDebugSystemVerilog.contains("ila_usb_utmi_eop ila"))
+    assert(!fullSystemVerilog.contains("ila_usb_utmi_eop"))
+  }
+
   "all profiles should expose identical top-level ports" in {
     assert(topModuleHeader(fullSystemVerilog) === topModuleHeader(retirePcDebugSystemVerilog))
     assert(topModuleHeader(fullSystemVerilog) === topModuleHeader(sdioLiteSdSystemVerilog))
@@ -102,6 +111,12 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
   "LCD touch should require the LCD controller" in {
     assertThrows[IllegalArgumentException] {
       SocFeatureConfig.minimal.copy(lcdTouch = true)
+    }
+  }
+
+  "USB ILA should require USB support" in {
+    assertThrows[IllegalArgumentException] {
+      SocFeatureConfig.minimal.copy(usbIla = true)
     }
   }
 }
