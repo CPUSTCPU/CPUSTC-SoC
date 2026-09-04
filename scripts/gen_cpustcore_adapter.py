@@ -54,11 +54,14 @@ REQUIRED_CONNECTIONS = (
     ("io_axi_b_id", "input", "bid"),
 )
 
-# Optional CPUSTCore observation ports mapped to the legacy SoC debug boundary.
+# Optional CPUSTCore observation ports mapped to the SoC debug boundary.
 DEBUG_PORTS = {
-    "io_retirePc": ("retire_pc", "[31:0]"),
     "io_cmt_0_valid": ("cmt0_valid", ""),
     "io_cmt_0_pc": ("cmt0_pc", "[31:0]"),
+    "io_cmt_1_valid": ("cmt1_valid", ""),
+    "io_cmt_1_pc": ("cmt1_pc", "[31:0]"),
+    "io_cmt_2_valid": ("cmt2_valid", ""),
+    "io_cmt_2_pc": ("cmt2_pc", "[31:0]"),
     "io_cmt_0_data": ("cmt0_data", "[31:0]"),
     "io_cmt_0_inst": ("cmt0_inst", "[31:0]"),
     "io_cmt_0_rd_valid": ("cmt0_rd_valid", ""),
@@ -120,7 +123,11 @@ module core_top (
     output wire [3:0]  debug0_wb_rf_wen,
     output wire [4:0]  debug0_wb_rf_wnum,
     output wire [31:0] debug0_wb_rf_wdata,
-    output wire [31:0] debug0_wb_inst
+    output wire [31:0] debug0_wb_inst,
+    output wire [2:0]  retire_valid,
+    output wire [31:0] retire_pc0,
+    output wire [31:0] retire_pc1,
+    output wire [31:0] retire_pc2
 );
 """
 
@@ -208,6 +215,14 @@ def validate_debug_ports(ports: dict[str, Port]) -> None:
     if errors:
         raise ValueError("\n".join(errors))
 
+    for lane in range(3):
+        valid = f"io_cmt_{lane}_valid" in ports
+        pc = f"io_cmt_{lane}_pc" in ports
+        if valid != pc:
+            raise ValueError(
+                f"CPU retirement lane {lane} must provide both valid and pc"
+            )
+
 
 def render_adapter(ports: dict[str, Port]) -> str:
     validate_required_ports(ports)
@@ -234,11 +249,14 @@ def render_adapter(ports: dict[str, Port]) -> str:
         for name, (signal, width) in DEBUG_PORTS.items()
         if name in connected
     ]
-    retire_pc = (
-        "retire_pc" if "io_retirePc" in connected
-        else "cmt0_pc" if "io_cmt_0_pc" in connected
-        else "32'b0"
-    )
+    retire_valid = [
+        f"cmt{lane}_valid" if f"io_cmt_{lane}_valid" in connected else "1'b0"
+        for lane in range(3)
+    ]
+    retire_pc = [
+        f"cmt{lane}_pc" if f"io_cmt_{lane}_pc" in connected else "32'b0"
+        for lane in range(3)
+    ]
     rf_wen = (
         "{4{cmt0_valid && cmt0_rd_valid}}"
         if {"io_cmt_0_valid", "io_cmt_0_rd_valid"} <= connected
@@ -277,11 +295,15 @@ def render_adapter(ports: dict[str, Port]) -> str:
             "    assign awlen   = cpu_awlen[3:0];",
             "    assign ws_valid = 1'b0;",
             "    assign rf_rdata = 32'b0;",
-            f"    assign debug0_wb_pc       = {retire_pc};",
+            f"    assign debug0_wb_pc       = {retire_pc[0]};",
             f"    assign debug0_wb_rf_wen   = {rf_wen};",
             f"    assign debug0_wb_rf_wnum  = {rf_wnum};",
             f"    assign debug0_wb_rf_wdata = {rf_wdata};",
             f"    assign debug0_wb_inst     = {wb_inst};",
+            f"    assign retire_valid       = {{{', '.join(reversed(retire_valid))}}};",
+            f"    assign retire_pc0         = {retire_pc[0]};",
+            f"    assign retire_pc1         = {retire_pc[1]};",
+            f"    assign retire_pc2         = {retire_pc[2]};",
             "",
             "    CPU u_cpustcore (",
             ",\n".join(connections),

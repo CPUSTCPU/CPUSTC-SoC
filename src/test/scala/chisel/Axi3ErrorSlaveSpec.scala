@@ -3,6 +3,7 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiSlaveMux.fallback.Axi3ErrorSlave
 import org.scalatest.freespec.AnyFreeSpec
 
 private object Axi3ErrorSlaveSpec {

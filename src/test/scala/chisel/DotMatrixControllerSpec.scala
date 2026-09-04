@@ -3,6 +3,7 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiSlaveMux.apb.display.{DotMatrixController, DotMatrixRegisters}
 import org.scalatest.freespec.AnyFreeSpec
 
 private object DotMatrixControllerSpec {

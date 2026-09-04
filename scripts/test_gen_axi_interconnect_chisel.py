@@ -33,6 +33,23 @@ def axi_interface(prefix: str, *, has_wid: bool, has_qos: bool, has_region: bool
 
 
 class AxiInterconnectGeneratorTest(unittest.TestCase):
+    def test_output_uses_path_derived_package(self):
+        output = GENERATOR.emit_scala(
+            "axi_interconnect_0_wrapper",
+            [],
+            [
+                axi_interface("M00", has_wid=False, has_qos=True, has_region=True),
+                axi_interface("S00", has_wid=True, has_qos=True, has_region=False),
+            ],
+        )
+
+        self.assertEqual(
+            GENERATOR.DEFAULT_OUTPUT,
+            "src/main/scala/chisel/axiInterconnect/AxiInterconnect0.scala",
+        )
+        self.assertTrue(output.startswith("package chisel.axiInterconnect\n"))
+        self.assertIn("import chisel.common.bus._", output)
+
     def test_axi4_master_uses_axi4_bundle_and_sidebands(self):
         interfaces = [
             axi_interface("M00", has_wid=False, has_qos=True, has_region=True),

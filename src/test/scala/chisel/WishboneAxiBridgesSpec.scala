@@ -3,6 +3,7 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiInterconnect.sdio.{Axi3ToWishboneControlBridge, WishboneToAxi4DmaBridge}
 import org.scalatest.freespec.AnyFreeSpec
 
 private object WishboneAxiBridgesSpec {

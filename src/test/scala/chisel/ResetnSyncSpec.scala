@@ -3,6 +3,7 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.common.cdc.ResetnSync
 import circt.stage.ChiselStage
 import java.nio.file.{Files, Path, Paths}
 import _root_.main.SystemVerilogOutput

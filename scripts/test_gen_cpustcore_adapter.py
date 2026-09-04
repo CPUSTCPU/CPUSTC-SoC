@@ -37,6 +37,8 @@ class AdapterGeneratorTest(unittest.TestCase):
         output = GENERATOR.render_adapter(ports)
         self.assertIn("debug0_wb_pc", output)
         self.assertIn("assign debug0_wb_pc       = 32'b0;", output)
+        self.assertIn("assign retire_valid       = {1'b0, 1'b0, 1'b0};", output)
+        self.assertIn("assign retire_pc2         = 32'b0;", output)
 
     def test_present_debug_ports_are_connected(self):
         ports = GENERATOR.parse_cpu_ports(
@@ -49,11 +51,24 @@ class AdapterGeneratorTest(unittest.TestCase):
         self.assertIn("assign debug0_wb_pc       = cmt0_pc;", output)
         self.assertIn("assign debug0_wb_rf_wen   = {4{cmt0_valid && cmt0_rd_valid}};", output)
 
-    def test_retire_pc_takes_precedence_over_commit_pc(self):
-        ports = GENERATOR.parse_cpu_ports(self.cpu_source(("io_retirePc", "io_cmt_0_pc")))
+    def test_three_retirement_lanes_are_exported(self):
+        ports = GENERATOR.parse_cpu_ports(
+            self.cpu_source((
+                "io_cmt_0_valid", "io_cmt_0_pc",
+                "io_cmt_1_valid", "io_cmt_1_pc",
+                "io_cmt_2_valid", "io_cmt_2_pc",
+            ))
+        )
         output = GENERATOR.render_adapter(ports)
-        self.assertIn(".io_retirePc", output)
-        self.assertIn("assign debug0_wb_pc       = retire_pc;", output)
+        self.assertIn("assign retire_valid       = {cmt2_valid, cmt1_valid, cmt0_valid};", output)
+        self.assertIn("assign retire_pc0         = cmt0_pc;", output)
+        self.assertIn("assign retire_pc1         = cmt1_pc;", output)
+        self.assertIn("assign retire_pc2         = cmt2_pc;", output)
+
+    def test_incomplete_retirement_lane_is_rejected(self):
+        ports = GENERATOR.parse_cpu_ports(self.cpu_source(("io_cmt_1_valid",)))
+        with self.assertRaisesRegex(ValueError, "lane 1 must provide both valid and pc"):
+            GENERATOR.render_adapter(ports)
 
     def test_missing_axi_port_is_rejected(self):
         ports = GENERATOR.parse_cpu_ports(self.cpu_source())

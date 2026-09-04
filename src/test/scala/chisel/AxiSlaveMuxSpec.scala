@@ -3,6 +3,8 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiSlaveMux._
+import chisel.common.bus.AXI3IO
 import org.scalatest.freespec.AnyFreeSpec
 
 private class AxiSlaveMuxTestHarness extends Module {

@@ -3,6 +3,8 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiInterconnect.camera.CameraApbMux
+import chisel.common.bus.APB3IO
 import org.scalatest.freespec.AnyFreeSpec
 
 private class CameraApbMuxHarness extends Module {

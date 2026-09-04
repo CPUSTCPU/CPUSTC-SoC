@@ -3,6 +3,7 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiInterconnect.usb.UsbPreSetupDebugMonitor
 import org.scalatest.freespec.AnyFreeSpec
 
 class UsbPreSetupDebugMonitorSpec extends AnyFreeSpec with ChiselScalatestTester {

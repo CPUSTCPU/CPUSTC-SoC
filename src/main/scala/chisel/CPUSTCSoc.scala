@@ -3,6 +3,32 @@ package chisel
 import chisel3._
 import chisel3.experimental.{Analog, attach}
 import chisel3.util.{Cat, log2Ceil}
+import chisel.axiInterconnect._
+import chisel.axiInterconnect.camera._
+import chisel.axiInterconnect.ddr._
+import chisel.axiInterconnect.ethernet._
+import chisel.axiInterconnect.gpu._
+import chisel.axiInterconnect.lcd._
+import chisel.axiInterconnect.nand._
+import chisel.axiInterconnect.sdio._
+import chisel.axiInterconnect.tensorCore._
+import chisel.axiInterconnect.usb._
+import chisel.axiInterconnect.vga._
+import chisel.axiSlaveMux._
+import chisel.axiSlaveMux.apb._
+import chisel.axiSlaveMux.apb.display._
+import chisel.axiSlaveMux.apb.i2c._
+import chisel.axiSlaveMux.apb.interrupt._
+import chisel.axiSlaveMux.apb.uart._
+import chisel.axiSlaveMux.confreg._
+import chisel.axiSlaveMux.fallback._
+import chisel.axiSlaveMux.spiFlash._
+import chisel.common.axi._
+import chisel.common.bus._
+import chisel.common.cdc._
+import chisel.common.clock._
+import chisel.cpu._
+import chisel.cpu.debug._
 
 class GpioPort extends Bundle {
     val led: UInt = Output(UInt(16.W))
@@ -190,6 +216,16 @@ class CPUSTCSoc(
     val coreTop = Module(new CoreTop)
     coreTop.io.aclk := cpuClk
     coreTop.io.aresetn := cpuResetn
+
+    val retirementWatchdog = if (features.retirePc) {
+        val watchdog = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
+            Module(new RetirementStallWatchdog(laneCount = 3, thresholdCycles = 512))
+        }
+        watchdog.io.clear := false.B
+        watchdog.io.commitValid := coreTop.io.retireValid
+        watchdog.io.commitPc := coreTop.io.retirePc
+        Some(watchdog)
+    } else None
 
     val axiClockConverter0 = Module(new AxiClockConverter0)
     axiClockConverter0.io.mAxiClock := aClk
@@ -398,9 +434,8 @@ class CPUSTCSoc(
         Some(controller)
     } else None
 
-    // switch[7] selects the hardware read-address monitor.  The address is
-    // sampled on the CPU's AXI read-address handshake, before the clock
-    // converter, so it remains in the CPU clock domain.
+    // switch[7] selects the hardware monitor. The fallback address is sampled
+    // on the CPU's AXI read-address handshake in the CPU clock domain.
     val readAddress = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
         val address = RegInit(0.U(32.W))
         when (coreTop.io.axi.arvalid && coreTop.io.axi.arready) {
@@ -409,22 +444,28 @@ class CPUSTCSoc(
         address
     }
     val monitorEnable = BoolSync(cpuClk, cpuResetn, io.gpio.switch(7))
-    val readAddressMonitor = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
-        val noReadCycles = RegInit(0.U(20.W))
+    val debugMonitorLeds = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
         val ledStepCount = RegInit(0.U(26.W))
         val ledIndex = RegInit(0.U(4.W))
-        val readFire = coreTop.io.axi.arvalid && coreTop.io.axi.arready
-
-        when (!monitorEnable) {
-            noReadCycles := 0.U
-            ledStepCount := 0.U
-            ledIndex := 0.U
-        }.otherwise {
-            when (readFire) {
+        val monitorStalled = if (features.retirePc) {
+            retirementWatchdog.get.io.trigger
+        } else {
+            val noReadCycles = RegInit(0.U(20.W))
+            val readFire = coreTop.io.axi.arvalid && coreTop.io.axi.arready
+            when (!monitorEnable) {
+                noReadCycles := 0.U
+            }.elsewhen (readFire) {
                 noReadCycles := 0.U
             }.elsewhen (noReadCycles =/= ((1 << 20) - 1).U) {
                 noReadCycles := noReadCycles + 1.U
             }
+            noReadCycles === ((1 << 20) - 1).U
+        }
+
+        when (!monitorEnable) {
+            ledStepCount := 0.U
+            ledIndex := 0.U
+        }.otherwise {
             when (ledStepCount === (50_000_000 - 1).U) {
                 ledStepCount := 0.U
                 ledIndex := Mux(ledIndex === 15.U, 0.U, ledIndex + 1.U)
@@ -434,23 +475,22 @@ class CPUSTCSoc(
         }
 
         val walkingPattern = (1.U(16.W) << (15.U - ledIndex))
-        Mux(noReadCycles === ((1 << 20) - 1).U, 0.U(16.W), ~walkingPattern)
+        // Board red LEDs are active low: all zeros indicates a detected stall.
+        Mux(monitorStalled, 0.U(16.W), ~walkingPattern)
     }
 
-    io.gpio.led := Mux(monitorEnable, readAddressMonitor, confreg0.io.gpio.led)
+    io.gpio.led := Mux(monitorEnable, debugMonitorLeds, confreg0.io.gpio.led)
     io.gpio.led_rg0 := confreg0.io.gpio.led_rg0
     io.gpio.led_rg1 := confreg0.io.gpio.led_rg1
-    val readAddressDisplay = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
-        Module(new HexSevenSegmentDisplay(clockHz = 50_000_000))
+    val debugSevenSegmentDisplay = withClockAndReset(cpuClk, (!cpuResetn).asAsyncReset) {
+        Module(new DebugSevenSegmentDisplay(clockHz = 50_000_000))
     }
-    val debugDisplayValue = if (features.retirePc) {
-        coreTop.io.debug0_wb_pc
-    } else {
-        readAddress
-    }
-    readAddressDisplay.io.value := debugDisplayValue
-    io.gpio.num_csn := Mux(monitorEnable, readAddressDisplay.io.csn, confreg0.io.gpio.num_csn)
-    io.gpio.num_a_g := Mux(monitorEnable, readAddressDisplay.io.aG, confreg0.io.gpio.num_a_g)
+    val debugDisplayValue = retirementWatchdog
+        .map(_.io.lastCommitPc)
+        .getOrElse(readAddress)
+    debugSevenSegmentDisplay.io.value := debugDisplayValue
+    io.gpio.num_csn := Mux(monitorEnable, debugSevenSegmentDisplay.io.csn, confreg0.io.gpio.num_csn)
+    io.gpio.num_a_g := Mux(monitorEnable, debugSevenSegmentDisplay.io.aG, confreg0.io.gpio.num_a_g)
     confreg0.io.gpio.switch := io.gpio.switch
     io.gpio.btn_key_col := confreg0.io.gpio.btn_key_col
     confreg0.io.gpio.btn_key_row := io.gpio.btn_key_row

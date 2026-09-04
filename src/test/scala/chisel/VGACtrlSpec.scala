@@ -3,6 +3,8 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.{VerilatorBackendAnnotation, VerilatorFlags}
+import chisel.axiInterconnect.vga.{VGACtrl, VGACtrlRegisters}
+import chisel.common.bus.{APB3IO, AXI4IO}
 import org.scalatest.freespec.AnyFreeSpec
 import java.nio.file.Paths
 import scala.collection.mutable.ArrayBuffer

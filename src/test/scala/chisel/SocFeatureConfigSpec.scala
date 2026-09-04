@@ -24,6 +24,8 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
     elaborate("usb-ila-debug", SocFeatureConfig.usbIlaDebug)
   private lazy val retirePcDebugSystemVerilog =
     elaborate("retire-pc-debug", SocFeatureConfig.retirePcDebug)
+  private lazy val noRetirePcSystemVerilog =
+    elaborate("no-retire-pc", SocFeatureConfig.retirePcDebug.copy(retirePc = false))
 
   private def topModuleHeader(systemVerilog: String): String = {
     val start = systemVerilog.indexOf("module CPUSTCSoc(")
@@ -55,7 +57,10 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
       "CameraCapture cameraCapture",
       "I2cMaster cameraI2cMaster"
     ).foreach(instance => assert(fullSystemVerilog.contains(instance)))
-    assert(fullSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
+    assert(fullSystemVerilog.contains("RetirementStallWatchdog retirementWatchdog"))
+    assert(fullSystemVerilog.contains(".io_commitValid  (_coreTop_io_retireValid)"))
+    assert(fullSystemVerilog.contains(".io_value (_retirementWatchdog_io_lastCommitPc)"))
+    assert(fullSystemVerilog.contains("? (_retirementWatchdog_io_trigger"))
   }
 
   "minimal profile should omit optional peripherals and retain confreg GPIO" in {
@@ -72,12 +77,21 @@ class SocFeatureConfigSpec extends AnyFreeSpec {
       "I2cMaster cameraI2cMaster"
     ).foreach(instance => assert(!retirePcDebugSystemVerilog.contains(instance)))
     assert(retirePcDebugSystemVerilog.contains("EthernetTop ethernetTop"))
-    assert(!retirePcDebugSystemVerilog.contains("HexSevenSegmentDisplay retirePcDisplay"))
+    assert(retirePcDebugSystemVerilog.contains(
+      "DebugSevenSegmentDisplay debugSevenSegmentDisplay"))
     assert(retirePcDebugSystemVerilog.contains("Axi3ErrorSlave sdioError"))
     assert(SocFeatureConfig.minimal === SocFeatureConfig.retirePcDebug)
     assert(SocFeatureConfig.retirePcDebug.retirePc)
     assert(SocFeatureConfig.full.retirePc)
-    assert(retirePcDebugSystemVerilog.contains(".io_value (_coreTop_io_debug0_wb_pc)"))
+    assert(retirePcDebugSystemVerilog.contains("RetirementStallWatchdog retirementWatchdog"))
+    assert(retirePcDebugSystemVerilog.contains(".io_commitValid  (_coreTop_io_retireValid)"))
+    assert(retirePcDebugSystemVerilog.contains(".io_value (_retirementWatchdog_io_lastCommitPc)"))
+  }
+
+  "retire-PC disabled profile should omit the watchdog and retain the AXI read monitor" in {
+    assert(!noRetirePcSystemVerilog.contains("RetirementStallWatchdog retirementWatchdog"))
+    assert(noRetirePcSystemVerilog.contains("debugMonitorLeds_monitorStalled_noReadCycles"))
+    assert(!noRetirePcSystemVerilog.contains("_retirementWatchdog_io_lastCommitPc"))
   }
 
   "LiteSD profile should retain SDIO and omit TensorCore" in {

@@ -3,6 +3,9 @@ package chisel
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chisel.axiInterconnect.nand.ApbMuxDmaPort
+import chisel.axiSlaveMux.apb._
+import chisel.common.bus.APB3IO
 import org.scalatest.freespec.AnyFreeSpec
 
 private class ApbMux2SimIO extends Bundle {
@@ -345,7 +348,7 @@ class ApbMux2Spec extends AnyFreeSpec with ChiselScalatestTester {
     }
   }
 
-  "ApbMux2 should leave unknown 7-bit pages pending even when every slave is ready" in {
+  "ApbMux2 should immediately reject unknown 7-bit pages without selecting a slave" in {
     test(new ApbMux2_sim).withAnnotations(annotations) { dut =>
       reset(dut)
 
@@ -360,7 +363,8 @@ class ApbMux2Spec extends AnyFreeSpec with ChiselScalatestTester {
         driveCpu(dut, address = (page << 13) | 0x321, write = false)
         expectNoSelection(dut)
         dut.io.cpu.grant.expect(true.B)
-        dut.io.cpu.ready.expect(false.B)
+        dut.io.cpu.ready.expect(true.B)
+        dut.io.cpu.error.expect(true.B)
         dut.io.cpu.readData.expect(0.U)
         dut.io.cpu.high24Read.expect(0.U)
         dut.io.cpu.wordTrans.expect(false.B)
