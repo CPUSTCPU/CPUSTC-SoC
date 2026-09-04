@@ -87,10 +87,15 @@ LICENSES/                    许可证文本与组件映射
 - [`IP/TensorCore/README.md`](IP/TensorCore/README.md)：TensorCore 接口、寄存器和 DMA 编程顺序。
 - [`LICENSES/README.md`](LICENSES/README.md)：多许可证边界和第三方组件映射。
 
-## 验证基线
-
-Vivado 2023.2 routed 报告（2026-08-17）显示：WNS/WHS 为 `0.360/0.052 ns`，TNS/THS 均为 `0 ns`，setup/hold failing endpoints 均为 0。当前源码和对应 bitstream 已完成目标板上板验证。
-
 ## 许可证
 
 本仓库采用多许可证结构：项目自有 Chisel、Scala、Verilog、脚本、测试、文档和集成文件按 MIT 映射；第三方代码、Fudian/XiangShan 内容、LiteSDCard、verilog-axi、OpenCores 和 AMD/Xilinx IP 继续适用各自上游许可证或工具条款。Linux、U-Boot、Buildroot 等外部仓库的许可证不因本仓库重新选择。依据为文件头、`.reuse/dep5`、[`LICENSES/README.md`](LICENSES/README.md) 和各组件随附声明。
+
+## 致谢
+
+- 感谢中国科学技术大学计算机学院的老师与助教对龙芯杯比赛的指导与支持。
+- 感谢 [ChipLab 实验平台](https://gitee.com/loongson-edu/chiplab) 提供的参考设计与开发基础以及 [iFuSoC](https://github.com/iFuProcessor/iFuSoC) 等历年龙芯开源仓库项目，为本项目早期架构设计提供了参考。
+- 感谢 [马子睿（@MAdrid1011）](https://github.com/MAdrid1011) 提供的 FP32 脉动阵列核心；中国科学技术大学历年参赛项目：[USTC-NSCSCC](https://github.com/MAdrid1011/USTC-NSCSCC)。
+- 感谢本项目引用的开源硬件 IP：[OpenCores I2C](https://github.com/freecores/i2c)、[LiteSDCard](https://github.com/enjoy-digital/litesdcard)、[verilog-axi](https://github.com/alexforencich/verilog-axi)、[verilog-axis](https://github.com/alexforencich/verilog-axis) 和 [OpenXiangShan Fudian](https://github.com/OpenXiangShan/fudian)。
+- 感谢 [Chisel](https://github.com/chipsalliance/chisel)、[SpinalHDL](https://github.com/SpinalHDL/SpinalHDL)、[LiteX](https://github.com/enjoy-digital/litex) 开源硬件开发生态；本项目使用了 SpinalHDL 提供的 OHCI、VideoDma 和 APB3 中断控制器等组件。
+- 感谢 [Thibault Sottiaux（@tibo-openai）](https://github.com/tibo-openai)对本项目的间接支持。
