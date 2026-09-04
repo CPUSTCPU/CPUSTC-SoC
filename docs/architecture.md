@@ -37,12 +37,12 @@ CPU local mux 只负责 AXI3 地址路由和响应选择，不负责协议、位
 | --- | --- |
 | `src/main/scala/chisel/CPUSTCSoc.scala` | Chisel SoC 集成顶层和固定板级 IO |
 | `src/main/scala/chisel/SocFeatureConfig.scala` | 可选外设的编译期配置 |
-| `src/main/scala/chisel/AxiSlaveMux.scala` | CPU local AXI3 地址分发 |
-| `src/main/scala/chisel/LiteSdioController.scala` | LiteSDCard 控制和 DMA wrapper |
-| `src/main/scala/chisel/WishboneAxiBridges.scala` | AXI3/Wishbone/AXI4 桥 |
-| `src/main/scala/chisel/UsbOhciAxi4Apb3Utmi.scala` | OHCI UTMI+ wrapper |
-| `src/main/scala/chisel/LcdCtrl.scala` | LCD APB/8080 和 DMA 连接层 |
-| `src/main/scala/chisel/CameraCapture.scala` | OV7670 capture wrapper |
+| `src/main/scala/chisel/axiSlaveMux/AxiSlaveMux.scala` | CPU local AXI3 地址分发 |
+| `src/main/scala/chisel/axiInterconnect/sdio/LiteSdioController.scala` | LiteSDCard 控制和 DMA wrapper |
+| `src/main/scala/chisel/axiInterconnect/sdio/WishboneAxiBridges.scala` | AXI3/Wishbone/AXI4 桥 |
+| `src/main/scala/chisel/axiInterconnect/usb/UsbOhciAxi4Apb3Utmi.scala` | OHCI UTMI+ wrapper |
+| `src/main/scala/chisel/axiInterconnect/lcd/LcdCtrl.scala` | LCD APB/8080 和 DMA 连接层 |
+| `src/main/scala/chisel/axiInterconnect/camera/CameraCapture.scala` | OV7670 capture wrapper |
 | `src/main/scala/verilog/soc_top.v` | Vivado top `soc_top` 的板级 wrapper |
 | `src/main/scala/main/main.scala` | 根 Chisel elaboration 入口，默认使用 `SocFeatureConfig.full` |
 | `IP/spinal/` | Interrupt、LCD DMA、USB 独立 SpinalHDL 工程 |

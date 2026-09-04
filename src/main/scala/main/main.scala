@@ -39,7 +39,7 @@ object SystemVerilogOutput {
 
 object main extends App {
   private val socFeatures: SocFeatureConfig =
-    SocFeatureConfig.usbIlaDebug
+    SocFeatureConfig.full
   private val targetDirectory = Paths.get("generated", "xc7a200t")
 
   ChiselStage.emitSystemVerilogFile(

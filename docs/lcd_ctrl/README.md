@@ -704,8 +704,8 @@ LCD Touch 的 I2C 和中断属于独立外设，不属于本文描述的 LCD Ctr
 主要源码：
 
 ```text
-src/main/scala/chisel/LcdCtrl.scala
-src/main/scala/chisel/LcdVideoDma.scala
+src/main/scala/chisel/axiInterconnect/lcd/LcdCtrl.scala
+src/main/scala/chisel/axiInterconnect/lcd/LcdVideoDma.scala
 IP/spinal/lcd/src/main/scala/cpustc/lcd/LcdVideoDma.scala
 src/main/scala/chisel/CPUSTCSoc.scala
 src/main/scala/verilog/soc_top.v
